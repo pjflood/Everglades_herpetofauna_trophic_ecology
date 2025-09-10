@@ -1,0 +1,10 @@
+"Slough","Habitat","Season","Species","2.5%","50%","97.5%"
+"SRS","Marsh","Dry","RANATP",0.007,0.244,0.949
+"SRS","Marsh","Dry","NERFLO",0.017,0.332,0.931
+"SRS","Marsh","Dry","NOTVIR",0.019,0.351,0.941
+"SRS","Marsh","Dry","SIRLAC",0.082,0.384,0.878
+"SRS","Pond","Dry","SIRLAC",0.043,0.377,0.848
+"SRS","Pond","Dry","RANGRY",0.065,0.455,0.91
+"SRS","Pond","Dry","AMPMEA",0.124,0.786,0.99
+"SRS","Pond","Wet","ACRIPT",0.006,0.165,0.83
+"SRS","Pond","Wet","NOTVIR",0.155,0.721,0.983

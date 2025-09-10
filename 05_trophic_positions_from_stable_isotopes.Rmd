@@ -1,0 +1,265 @@
+---
+title: "05_trophic_positions_from_stable_isotopes"
+author: "Peter Flood"
+date: "2025-09-08"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install libraries 
+```{r}
+# install.packages("remotes")      # Install remotes if needed
+# remotes::install_github("clquezada/tRophicPosition")
+
+if (!require("openxlsx")) install.packages("openxlsx")
+if (!require("coda")) install.packages("coda")
+if (!require("ggpubr")) install.packages("ggpubr")
+if (!require("tidyverse")) install.packages("tidyverse")
+```
+
+# Load libraries
+```{r}
+library(tRophicPosition) #Bayesian models of trophic position for stable isotopes
+library(openxlsx) #importing and exporting Excel files
+library(ggpubr) #arranging multiple ggplots
+library(tidyverse) #for data manipulation and plotting via ggplot2
+``` 
+
+# Load and format data
+Load data
+```{r}
+all.isotopes <- read.csv(file = "Data/Stable Isotopes/FCE1259_isotope_merge_all.csv", header = T)
+
+herp.isotopes <- all.isotopes %>%
+  filter(size_class %in% c("A.gry1", "A.mea1", "N.flo1", "N.vir1", "P.axa1", "R.gry1", "R.gry2", "S.lac1") |
+           Species == "FLOC")
+
+sample.sizes <- herp.isotopes %>%
+  group_by(size_class, Slough, Habitat, Season) %>% tally() %>%
+  pivot_wider(names_from = c(Slough, Habitat, Season),
+              values_from = n)  
+
+#select columns I'll need for the analysis
+model.data <- herp.isotopes %>% 
+  mutate(Community = paste(Slough, "-", Habitat, "-", Season, sep = "")) %>% 
+  select(Species, d13C, d15N, Community, Sample_Type) %>% 
+  mutate(Species = gsub("[\\**]", "", Species))
+```
+
+Format trophic baseline data
+```{r}
+#Green Algae
+#Simulating data based on values from Flood et al. 2023 in Food Webs
+green.algae.C<-rnorm(n = 240, mean = -31.9, sd = 1.12) %>% data.frame()
+green.algae.N<-rnorm(n = 240, mean = 3.9, sd = 0.422) %>% data.frame()
+green.algae<-bind_cols(green.algae.C, green.algae.N)
+colnames(green.algae)<-c("d13C", "d15N")
+green.algae$Species<-"Green Algae"
+green.algae$Community <- rep(c("TSL-Marsh-Wet", "TSL-NP-Wet", "TSL-Pond-Wet", 
+                           "TSL-Marsh-Dry", "TSL-NP-Dry", "TSL-Pond-Dry",
+                           "SRS-Marsh-Wet", "SRS-NP-Wet", "SRS-Pond-Wet",
+                           "SRS-Marsh-Dry", "SRS-NP-Dry", "SRS-Pond-Dry"),
+                         each = 20)
+green.algae$Sample_Type <- "b2"
+
+#check floc sample size among habitat-season levels for both sloughs
+floc.n <- model.data %>% filter(Species == "FLOC") %>% 
+  group_by(Community) %>% tally()
+
+#There is no TSL-NP-Dry floc
+#will need to simulate some data here too
+#let's see how variable floc values are first
+floc <- filter(all.isotopes, Species == "FLOC")
+
+#summarize by communities
+floc.iso.summary <- model.data %>% filter(Species == "FLOC") %>% group_by(Community) %>% 
+  summarise(meand15N = mean(d15N), meand13C = mean(d13C),
+            sdd15N = sd(d15N), sdd13C  = sd(d13C))
+
+#mean is extrapolate from the difference between ponds and NP in the wet season
+#sd is the mean sd for floc across all habitat season levels
+#mean d15N
+floc.iso.summary[10,2] - (floc.iso.summary[11,2]-floc.iso.summary[9,2])
+#sd d15N
+mean(floc.iso.summary$sdd15N)
+
+#mean d13C
+floc.iso.summary[10,3] - (floc.iso.summary[11,3]-floc.iso.summary[9,3])
+
+#sd d13C
+mean(floc.iso.summary$sdd13C)
+
+#simulate data
+floc.n.tsl.np.dry <- rnorm(n = 15, mean = 3.36, sd = 0.631) %>% data.frame() 
+floc.c.tsl.np.dry <- rnorm(n = 15, mean = -25.4, sd = 1.59) %>% data.frame()
+floc.tsl.np.dry <- bind_cols(floc.n.tsl.np.dry, floc.c.tsl.np.dry)
+colnames(floc.tsl.np.dry) <- c("d15N", "d13C")
+floc.tsl.np.dry <- floc.tsl.np.dry %>% mutate(Species = "FLOC", Sample_Type = "b1", 
+                                              Community = "TSL-NP-Dry")
+
+#combine with the rest of the data and filter for Species where n > 2
+model.data.full <- bind_rows(floc.tsl.np.dry, green.algae, model.data) %>% group_by(Species, Community) %>% 
+  filter(n() > 2) %>% as.data.frame()
+
+#change sample_type for floc to b1
+model.data.full$Sample_Type[model.data.full$Species=="FLOC"] <- "b1"
+```
+
+# Trophic Position Model
+```{r}
+everglades.list <- extractIsotopeData(model.data.full, b1 = "b1", b2 = "b2", baselineColumn = "Sample_Type",
+                                      consumersColumn = "Species", groupsColumn = "Community", 
+                                      d13C = "d13C", d15N = "d15N")
+
+for (community in everglades.list) {
+  print(summary(community))
+  plot(community)
+}
+```
+
+Run the model
+```{r}
+everglades.models <- multiSpeciesTP(everglades.list, model = "twoBaselinesFull",
+                                    n.adapt = 100000, n.iter = 2000000,
+                                    burnin = 10000, thin = 100, chains = 2, print = F)
+#plot output - initial inspection of results
+herp.tp.alpha <- credibilityIntervals(everglades.models$df, x = "group", xlab = "Community")
+```
+
+# Extract Model Output
+```{r}
+#trophic position
+#extract modes and credible intervals
+trophic.positions <- sapply(everglades.models$TPs, quantile, probs = c(0.025, 0.5, 0.975)) %>% round(3) %>% 
+  as.data.frame() %>% t() %>% as.data.frame() %>% rownames_to_column() %>% 
+  separate(rowname, into = c("Slough", "Habitat", "Season", "Species"), sep = "\\.") %>% 
+  arrange(Slough, Habitat, Season, `50%`)
+
+#write out to csv
+write.csv(trophic.positions, 
+          file = "Outputs/Stable Isotopes/trophic_position_mode_ci.csv",
+          row.names = F)
+
+#pairwise comparisons of trophic position
+pairwiseTP <- pairwiseComparisons(everglades.models$TPs) %>% as.data.frame() %>% rownames_to_column()
+colnames(pairwiseTP) <- c("Species", pairwiseTP$rowname)
+
+#write out to csv
+write.csv(pairwiseTP, 
+          row.names = F)
+
+#alpha
+#extract modes and credible intervals
+alpha <- sapply(everglades.models$Alphas, quantile, probs = c(0.025, 0.5, 0.975)) %>% round(3) %>% 
+  as.data.frame() %>% t() %>% as.data.frame() %>% rownames_to_column() %>% 
+  separate(rowname, into = c("Slough", "Habitat", "Season", "Species"), sep = "\\.") %>% 
+  arrange(Slough, Habitat, Season, `50%`)
+
+write.csv(alpha, 
+          file = "Outputs/Stable Isotopes/alpha_mode_ci.csv",
+          row.names = F)
+
+#pairwise comparisons
+pairwisealpha <- pairwiseComparisons(everglades.models$Alphas) %>% as.data.frame() %>% rownames_to_column()
+colnames(pairwisealpha) <- c("Species", pairwisealpha$rowname)
+
+#write out to excel
+write.csv(pairwisealpha, 
+          file = "Outputs/Stable Isotopes/pairwise_alpha.csv",
+          row.names = F)
+```
+
+# Plots
+```{r}
+#change Species names to full scientific names for lowest taxonomic level 
+alpha.mean.ci <- alpha %>% arrange(Species, Slough, Habitat, Season) %>% #select(Species, `2.5%`:`97.5%`) %>% 
+  rename(alpha_2.5 = `2.5%`, alpha_50 = `50%`, alpha_97.5 = `97.5%`)
+
+tp.alpha.plot <- trophic.positions %>% arrange(Species, Slough, Habitat, Season) %>% 
+  rename(TP_2.5 = `2.5%`, TP_50 = `50%`, TP_97.5 = `97.5%`) %>% 
+  bind_cols(select(alpha.mean.ci, alpha_2.5:alpha_97.5)) %>% 
+  mutate(Species = case_when(
+      Species == "ACRIPT" ~ "Cricket Frog Tadpoles",
+      Species == "AMPMEA" ~ "Two-Toed Amphiuma",
+      Species == "NERFLO" ~ "Florida Green Watersnake", 
+      Species == "NOTVIR" ~ "Peninsula Newt",  
+      Species == "RANATP" ~ "Pig Frog Tadpoles", 
+      Species == "RANGRY" ~ "Pig Frog",
+      Species == "SIRLAC" ~ "Greater Siren"
+      )) %>% 
+        mutate(Habitat = case_when(Habitat == "NP" ~ "Near Pond",
+                                   Habitat != "NP" ~ Habitat)) %>% 
+  arrange(Slough, Season, Species, Habitat)
+```
+
+Trophic Position Plot
+```{r}
+windowsFonts(Times = windowsFont("Times New Roman"))
+
+(herp.tp.plot <- ggplot(data = tp.alpha.plot, aes(x = Species, y = TP_50, color = Habitat, shape = Season))+
+    geom_errorbar(aes(ymin = TP_2.5, ymax = TP_97.5), size = 1, position = position_dodge(0.3), width = 0.25)+
+    geom_point(size = 3, position = position_dodge(0.3))+
+    scale_color_viridis_d(end = 0.75) +
+    scale_fill_viridis_d(end = 0.75) +
+    #scale_y_continuous(expand = c(0,0))+
+    ylab("Trophic Position")+
+    xlab(NULL)+
+    theme_bw()+
+    theme(text = element_text(family = "Times", size = 10),
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = -1, size = 8),
+          strip.text.x = element_text(size = 10),
+          strip.text.y = element_text(size = 10),
+          #panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_line(size = 0.1), panel.grid.major = element_line(size = 0.1),
+          axis.line = element_line(color = 'black', size = 0.1), axis.ticks.x = element_line(size = 0.05),
+          axis.title = element_text(size = 10), axis.text.x.bottom = element_text(size = 10, angle = 30, hjust = 0.5),
+          axis.text.y = element_text(size = 10), axis.ticks.y = element_line(size = 0.2),
+          legend.title = element_text(size = 10), legend.text = element_text(size = 10))
+  
+)
+```
+
+Alpha Plot
+```{r}
+(herp.alpha.plot <- ggplot(data = tp.alpha.plot, aes(x = Species, y = alpha_50, color = Habitat, shape = Season))+
+    geom_errorbar(aes(ymin = alpha_2.5, ymax = alpha_97.5), size = 1, position = position_dodge(0.3), width = 0.25)+
+    geom_point(size = 3, position = position_dodge(0.3))+
+    scale_color_viridis_d(end = 0.75) +
+    scale_fill_viridis_d(end = 0.75) +
+    #scale_y_continuous(expand = c(0,0))+
+    ylab("Alpha")+
+    xlab(NULL)+
+    theme_bw()+
+    theme(text = element_text(family = "Times", size = 5),
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 8),
+          strip.text.x = element_text(size = 10),
+          strip.text.y = element_text(size = 10),
+          #panel.border = element_blank(), panel.grid.major = element_blank(),
+          axis.line = element_line(color = 'black', size = 0.1), axis.ticks.x = element_line(size = 0.05),
+          axis.title = element_text(size = 10), axis.text.x.bottom = element_text(size = 10, angle = 30, hjust = 0.5),
+          axis.text.y = element_text(size = 10), axis.ticks.y = element_line(size = 0.2),
+          legend.title = element_text(size = 10), legend.text = element_text(size = 10))
+  
+)
+```
+
+Stack Plots
+```{r}
+herp.tp.alpha.plot <- ggarrange(herp.tp.plot, herp.alpha.plot, ncol = 1, nrow = 2, common.legend = T,
+                                labels = "AUTO", legend = "right", font.label = list(family = "Times"),
+                                hjust = -0.2)
+herp.tp.alpha.plot
+
+ggsave("Figures/Stable Isotopes/Trophic Position/herp_tp_alpha_plot.tiff",
+       plot = herp.tp.alpha.plot,
+       dpi = 600, height = 150, width = 200, units = "mm")
+```

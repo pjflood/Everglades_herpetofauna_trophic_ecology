@@ -1,0 +1,445 @@
+---
+title: "06_trophic_niches_from_stable_isotopes"
+author: "Peter Flood"
+date: "2025-09-09"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install and load libraries
+Install if needed
+```{r}
+# install.packages("remotes")      # Install remotes if needed
+# remotes::install_github("clquezada/tRophicPosition")
+if (!require("SIBER")) install.packages("SIBER")
+if (!require("ellipse")) install.packages("ellipse")
+if (!require("ggpubr")) install.packages("ggpubr")
+if (!require("openxlsx")) install.packages("openxlsx")
+if (!require("coda")) install.packages("coda")
+if (!require("ggpubr")) install.packages("ggpubr")
+if (!require("tidyverse")) install.packages("tidyverse")
+```
+
+Load
+```{r}
+library(SIBER) #modeling isotopic niches
+library(ellipse) #extracting posterior ellipses
+library(openxlsx) #importing and exporting excel files
+library(coda) #Bayesian model diagnostics
+library(tRophicPosition) #using their pairwise comparisons functions 
+library(ggpubr) #plotting, arranging multiple ggplots 
+library(tidyverse) #data manipulation and plotting via ggplot
+```
+
+# Load and format data
+Load data and filter to herps
+```{r}
+all.isotopes <- read.csv(file = "Data/Stable Isotopes/FCE1259_isotope_merge_all.csv", header = T)
+
+herp.isotopes <- all.isotopes %>%
+  filter(size_class %in% c("A.gry1", "A.mea1", "N.flo1", "N.vir1", "P.axa1", "R.gry1", "R.gry2", "S.lac1"))
+```
+
+Format for SIBER
+```{r}
+#prepare data for SIBER
+#need to unite the habitat and season columns into a single column called "community"
+iso.slough.hab.season<-unite(herp.isotopes, col = "community", Slough, Habitat, Season, sep ="_") %>% 
+  mutate(size_class = case_when(
+    is.na(size_class) ~ Species,
+    !is.na(size_class) ~ size_class
+  ))
+
+#isolate only the data needed for SIBER
+iso.siber<-select(iso.slough.hab.season, d13C, d15N, size_class, community)
+colnames(iso.siber)<-c("iso1", "iso2", "group", "community")
+
+#dropping consumers where n < 3 or sd of either isotope is 0
+siber.data<-iso.siber %>%
+  group_by(group, community) %>%
+  filter(n()>2, sd(iso1)!=0, sd(iso2)!=0, !is.na(iso1), !is.na(iso2)) %>% #remove groups with n < 3 and those that didn't get C or N peaks
+  ungroup() %>%
+  as.data.frame() %>% #SIBER needs this step to work 
+  arrange(community, group) #this step makes it so colnames() of ML output are the same order as ellipse model output
+#check what was removed
+removed.consumers<-iso.siber[!(iso.siber$group %in% siber.data$group),]
+
+#createSiberObject
+global.iso.siber<-createSiberObject(siber.data)
+```
+
+# SIBER models
+## Visually inspect data
+```{r}
+# Create lists of plotting arguments to be passed onwards to each 
+# of the three plotting functions.
+community.hulls.args <- list(col = 1, lty = 1, lwd = 1)
+group.ellipses.args  <- list(n = 100, p.interval = 0.95, lty = 1, lwd = 2)
+group.hull.args      <- list(lty = 2, col = "grey20")
+
+par(mfrow=c(1,1))
+plotSiberObject(global.iso.siber,
+                ax.pad = 2, 
+                hulls = F, community.hulls.args, 
+                ellipses = T, group.ellipses.args,
+                group.hulls = T, group.hull.args,
+                bty = "L",
+                iso.order = c(1,2),
+                xlab = expression(d13C),
+                ylab = expression(d15N)
+)
+```
+
+## Calculate TA, SEA, SEAc
+```{r}
+global.iso.ML <- groupMetricsML(global.iso.siber)
+
+print(global.iso.ML)
+```
+
+## Set up model parameters
+```{r}
+#set up the model parameters 
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^6   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^4 # discard the first set of values
+parms$n.thin <- 100     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+parms$save.output = T
+parms$save.dir = getwd()
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+```
+
+## Run model
+```{r}
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+global.iso.ellipses.posterior <- siberMVN(global.iso.siber, parms, priors)
+
+#calculate posterior estimates of ellipses for all groups
+SEA.B<-siberEllipses(global.iso.ellipses.posterior)
+colnames(SEA.B)<-names(global.iso.ellipses.posterior)
+```
+
+## Extract output
+```{r}
+#calculate credibility intervals
+cr.p<-c(0.5, 0.95, 0.99) #vector of desired quantiles
+
+#call hdrcde_hdr using lapply()
+SEA.B.credibles<-lapply(
+  as.data.frame(SEA.B), 
+  function(x,...){tmp<-hdrcde::hdr(x)$hdr},
+  prob = cr.p)
+
+#match up group names
+names(SEA.B.credibles)<-colnames(global.iso.ML)
+
+#this carries through the row names from matrices in SEA.B.credibles
+#they don't turn out all that clean though, so adding a column later with the same info
+y <- do.call(function(...) {
+  tmp <- plyr::rbind.fill.matrix(...)
+  rownames(tmp) <- sapply(SEA.B.credibles, function(i) {
+    rownames(i)
+  })
+  return(tmp)
+}, SEA.B.credibles)
+
+y
+
+#object with cleaned-up row names
+interval<-rep(c("99%", "95%", "50%"), 9)
+
+#replicated each name three times in sequence to match up with new data frame
+seab.names<-data.frame(rep(names(SEA.B.credibles), each = 3))
+colnames(seab.names)<-"names"
+
+#seab.names<-separate(seab.names, col = names, into = c('hab.season', 'spp'), extra = "merge")
+
+#combine names with new data frame
+seab.cred.matrix<-data.frame(seab.names, interval, y)
+colnames(seab.cred.matrix)<-c(colnames(seab.names), "interval", "lower", "upper")
+
+#write out to a csv
+write.csv(seab.cred.matrix, file = "Outputs/Stable Isotopes/Trophic Niche/global.sc.SEA.B.credibles.csv")
+
+# do similar to get the modes, taking care to pick up multimodal posterior
+# distributions if present
+SEA.B.modes<-lapply(
+  as.data.frame(SEA.B), 
+  function(x,...){tmp<-hdrcde::hdr(x)$mode},
+  prob = cr.p, all.modes=T)
+
+#need to do the same as for the credible intervals to get the colnames to be
+#the names not the numbers
+write.csv(SEA.B.modes, file = "Outputs/Stable Isotopes/Trophic Niche/global.sc.SEA.B.modes.csv")
+
+#read back in
+SEA.B.modes.matrix<-read.csv(file = "Outputs/Stable Isotopes/Trophic Niche/global.sc.SEA.B.modes.csv", header = T, row.names = 1)
+
+#change colnames
+colnames(SEA.B.modes.matrix)<-colnames(global.iso.ML)
+#transpose this matrix
+SEA.B.modes.matrix.t<-t(SEA.B.modes.matrix)
+#change the name of what is now a single column to mode
+colnames(SEA.B.modes.matrix.t)<-"mode"
+#write out the final csv over the previous mode csv
+write.csv(SEA.B.modes.matrix.t, file = "Outputs/Stable Isotopes/Trophic Niche/global.sc.SEA.B.modes.csv")
+```
+
+# Visual Niches
+```{r}
+herp.ellipse.df <- siber.data %>% 
+  separate(community, into = c("Slough", "Habitat", "Season"), sep = "_") %>% 
+  rename(Species = group) %>% 
+  mutate(Species = case_when(
+      Species == "A.gry1" ~ "Cricket Frog Tadpoles",
+      Species == "A.mea1" ~ "Two-Toed Amphiuma",
+      Species == "N.flo1" ~ "Florida Green Watersnake", 
+      Species == "N.vir1" ~ "Peninsula Newt",  
+      Species == "R.gry1" ~ "Pig Frog Tadpoles", 
+      Species == "R.gry2" ~ "Pig Frog",
+      Species == "S.lac1" ~ "Greater Siren"
+      ))
+
+(herp.niche.plot <- ggplot(data = herp.ellipse.df, aes(x = iso1, y = iso2, color = Species, fill = Species))+
+    scale_color_viridis_d(end = 0, begin = 0.8, option = "A")+
+    scale_fill_viridis_d(end = 0, begin = 0.8, option = "A")+
+    facet_grid(Season~Habitat)+
+    stat_conf_ellipse(level = 0.95, geom = "polygon", alpha = 0.5)+
+    geom_point()+
+    #labs(x = "δ13C(‰)", y = "δ15N(‰)")+
+    labs(y = "MDS2", x = "MDS1")+
+    theme_bw()+
+    theme(text = element_text(family = "Times", size = 12),
+          #panel.spacing.x = unit(7, "mm"),
+          panel.grid.major = element_blank(),panel.grid.minor = element_blank(),
+          strip.text.y.right = element_text(angle = 0),
+          axis.text = element_text(size = 12))
+  
+)
+
+ggsave("Figures/Stable Isotopes/Trophic Niche/herp_si_niche_plot.tiff", 
+       herp.niche.plot, 
+       height = 150, width = 200, units = "mm", dpi = 600)
+```
+
+Posterior mean ellipses
+```{r}
+mean_ellipses <- lapply(names(global.iso.ellipses.posterior), function(name) {
+  posterior <- global.iso.ellipses.posterior[[name]] %>% as.data.frame()
+  #colnames(posterior) <- c("Sigma211", "Sigma212", "Sigma221", "Sigma222", "mu1", "mu2")
+  # Use backticks for column names with [ or ] characters
+  mu_mean <- c(mean(posterior$`mu[1]`), mean(posterior$`mu[2]`))
+  Sigma_mean <- matrix(
+    c(
+      mean(posterior$`Sigma2[1,1]`),
+      mean(posterior$`Sigma2[1,2]`),
+      mean(posterior$`Sigma2[2,1]`),
+      mean(posterior$`Sigma2[2,2]`)
+    ),
+    nrow = 2, byrow = TRUE
+  )
+  ell <- ellipse(Sigma_mean, centre = mu_mean, level = 0.4, npoints = 100)
+  df_ell <- as.data.frame(ell)
+  df_ell$group_comm <- name
+  df_ell$group <- sub("\\..*", "", name)
+  df_ell$community <- sub(".*\\.", "", name)
+  df_ell
+})
+
+mean_ellipses_df <- do.call(rbind, mean_ellipses) %>% 
+  rename(community = group, group = community) %>% 
+  mutate(group = factor(group))
+
+```
+
+Ellipse Cloud Plot
+```{r}
+n_ellipses <- 200
+
+ellipse_clouds <- list()
+
+for (name in names(global.iso.ellipses.posterior)) {
+  posterior <- global.iso.ellipses.posterior[[name]]
+  nrow_posterior <- nrow(posterior)
+  set.seed(2024)
+  sampled_rows <- sample(seq_len(nrow_posterior), n_ellipses)
+  
+  temp <- lapply(sampled_rows, function(i) {
+    row <- posterior[i, ]
+    mu <- c(row[["mu[1]"]], row[["mu[2]"]])
+    # Make sure you get the elements in the correct order:
+    Sigma <- matrix(
+      c(row[["Sigma2[1,1]"]], row[["Sigma2[1,2]"]],
+        row[["Sigma2[2,1]"]], row[["Sigma2[2,2]"]]),
+      nrow = 2, byrow = TRUE
+    )
+    ell <- ellipse(Sigma, centre = mu, level = 0.40, npoints = 100)
+    df <- as.data.frame(ell)
+    df$group_comm <- name
+    df$draw <- i
+    df
+  })
+  ellipse_clouds[[name]] <- do.call(rbind, temp)
+}
+
+ellipse_cloud_df <- do.call(rbind, ellipse_clouds)
+
+ellipse_cloud_df$community <- sub("\\..*", "", ellipse_cloud_df$group_comm) %>% factor()
+ellipse_cloud_df$group <- sub(".*\\.", "", ellipse_cloud_df$group_comm) %>% 
+  factor() 
+```
+
+Plot Ellipse Cloud
+```{r}
+#Format data for this plot
+siber.plot.data <- siber.data %>%
+      mutate(
+        Species = group,
+        Species = case_when(
+          Species == "A.gry1" ~ "Cricket Frog Tadpoles",
+          Species == "A.mea1" ~ "Two-Toed Amphiuma",
+          Species == "N.flo1" ~ "Florida Green Watersnake",
+          Species == "N.vir1" ~ "Peninsula Newt",
+          Species == "R.gry1" ~ "Pig Frog Tadpoles",
+          Species == "R.gry2" ~ "Pig Frog",
+          Species == "S.lac1" ~ "Greater Siren"
+        )
+      ) %>% 
+  separate(community, into = c("Slough", "Habitat", "Season"), sep = "_")
+
+ellipse.cloud.df <- ellipse_cloud_df %>%
+        mutate(
+          Species = group,
+          Species = case_when(
+            group_comm == "SRS_Pond_Wet.A.gry1" ~ "Cricket Frog Tadpoles",
+            Species == "mea1" ~ "Two-Toed Amphiuma",
+            Species == "flo1" ~ "Florida Green Watersnake",
+            Species == "vir1" ~ "Peninsula Newt",
+            group_comm == "SRS_Marsh_Dry.R.gry1" ~ "Pig Frog Tadpoles",
+            Species == "gry2" ~ "Pig Frog",
+            Species == "lac1" ~ "Greater Siren"
+          )
+        ) %>% 
+  separate(community, into = c("Slough", "Habitat", "Season"), sep = "_")
+
+mean.ellipses.df <- mean_ellipses_df %>% 
+  separate(community, into = c("Slough", "Habitat", "Season"), sep = "_") %>% 
+  mutate(
+          Species = group,
+          Species = case_when(
+            group_comm == "SRS_Pond_Wet.A.gry1" ~ "Cricket Frog Tadpoles",
+            Species == "mea1" ~ "Two-Toed Amphiuma",
+            Species == "flo1" ~ "Florida Green Watersnake",
+            Species == "vir1" ~ "Peninsula Newt",
+            group_comm == "SRS_Marsh_Dry.R.gry1" ~ "Pig Frog Tadpoles",
+            Species == "gry2" ~ "Pig Frog",
+            Species == "lac1" ~ "Greater Siren"
+          )
+        )
+  
+
+
+(
+  ellipse.cloud.iso.plot <- ggplot(
+    siber.plot.data,
+    aes(
+      x = iso1,
+      y = iso2,
+      color = Species,
+      fill = Species
+    )
+  ) +
+    geom_path(
+      data = ellipse.cloud.df ,
+      aes(
+        x = x,
+        y = y,
+        group = interaction(group_comm, draw),
+        color = Species
+      ),
+      size = 0.7,
+      alpha = 0.05,
+      show.legend = FALSE
+    ) +
+    geom_path(
+      data = mean.ellipses.df,
+      aes(
+        x = x,
+        y = y,
+        group = group_comm,
+        color = Species
+      ),
+      #color = "red",
+      linetype = "dashed",
+      size = 1.2,
+      show.legend = FALSE
+    ) +
+    stat_conf_ellipse(
+      level = 0.95,
+      geom = "polygon",
+      alpha = 0.5
+    ) +
+    geom_point(size = 3, alpha = 0.8) +
+    labs(
+      title = "Trophic Niches from Stable Isotopes",
+      x = expression(paste(delta^{13}, "C (\u2030)")),
+      y = expression(paste(delta^{15}, "N (\u2030)")),
+      color = "Species",
+      fill = "Species"
+    ) +
+    scale_color_viridis_d(
+      end = 0,
+      begin = 0.8,
+      option = "A"
+    ) +
+    scale_fill_viridis_d(
+      end = 0,
+      begin = 0.8,
+      option = "A"
+    ) +
+    facet_grid(Season ~ Habitat) +
+    theme_bw() +
+    coord_fixed(
+      xlim = c(-36, -25), ylim = c(2, 12)
+      )
+)
+
+ggsave("Figures/Stable Isotopes/Trophic Niche/herp_si_niches_plot.tiff", 
+       ellipse.cloud.iso.plot, 
+       height = 150, width = 200, units = "mm", dpi = 600)
+```
+
+## Stack with Niche SCA
+Stack with similar plot based on stomach contents
+Requires running 04_trophic_niche_from_stomch_contents first
+```{r}
+trophic.niche.stack <- ggarrange(ellipse.cloud.iso.plot, ellipse.cloud.plot, 
+                                 nrow = 2, ncol = 1, labels = "AUTO",
+                                 common.legend = F, legend = "right"
+  
+)
+
+trophic.niche.stack
+
+ggsave("Figures/Stable Isotopes/Trophic Niche/trophic_niche_stack.tiff", 
+       trophic.niche.stack, 
+       height = 250, width = 200, units = "mm", dpi = 600)
+```

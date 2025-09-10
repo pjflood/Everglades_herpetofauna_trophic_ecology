@@ -1,0 +1,2148 @@
+---
+title: "07_diets_from_stable_isotopes"
+author: "Peter Flood"
+date: "2025-09-09"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install and load libraries
+Install if needed
+```{r}
+# install.packages("remotes")      # Install remotes if needed
+# remotes::install_github("clquezada/tRophicPosition")
+if (!require("simmr")) install.packages("simmr")
+if (!require("ggrepel")) install.packages("ggrepel")
+if (!require("tidyverse")) install.packages("tidyverse")
+```
+
+Load libraries
+```{r}
+library(simmr)
+library(ggrepel)
+library(tidyverse)
+```
+
+# Load and format data
+Load data
+```{r}
+all.isotopes <- read.csv(file = "Data/Stable Isotopes/FCE1259_isotope_merge_all.csv", header = T)
+
+herp.isotopes <- all.isotopes %>%
+  filter(size_class %in% c("A.gry1", "A.mea1", "N.flo1", "N.vir1", "P.axa1", "R.gry1", "R.gry2", "S.lac1"))
+```
+
+Mean and variance per mean and species across covariate levels w/ quick visualizations
+```{r}
+#Plot mean per species combined for all seasons, sloughs, and habitats
+all.isotope.spp.mean <- all.isotopes %>% group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) 
+
+(all.combined.isotope.biplot <- ggplot(data = all.isotope.spp.mean, aes(x = d13C_mean, y = d15N_mean))+
+    geom_text_repel(aes(label = Species))
+)
+
+srs.isotope.spp.mean <- all.isotopes %>% 
+  filter(Slough =="SRS",
+         Species %in% c( #filter for taxa in these models
+           "SIRLAC", "AMPMEA", "NOTVIR", "NERFLO", "PSEAXA", "ACRIPT", "RANATP",
+           "PERMAT", "ALGAL", "UTRPUR", "UTRFOL", "MELTUB", "PLASCA", "PSECOL", "SPHAER",
+           "LUCGOO", "GAMHOL", "FUNCHR", "FUNCON", "PROFAL", "PROALL", "PROSPP", "JORFLO",
+           "CYBSPP", "BELSPP", "COLEOA", "PELFEM", "CORIXI", "FLATWORM", "GERRID", "BLUE MITE", 
+           "TILMAR", "HEMLET", "CICURO", "POELAT", "RANGRY", "LEPGUL", "LEPMAC", "LEPMAR", 
+           "LEPMIC", "LEPPUN", "ENNGLO", "ELAEVE", "AMPHIPOD", "CHIRON", "COPEPOD", "OSTRACOD",
+           "EPHEME", "BRAGRA", "CELSPP", "CORING", 
+           "EPISTE", "ERYSIM", "LIBINC", "PACLON"
+         )) %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) 
+
+(srs.combined.isotope.biplot <- ggplot(data = srs.isotope.spp.mean, aes(x = d13C_mean, y = d15N_mean))+
+    geom_text_repel(aes(label = Species))
+)
+```
+
+Create some combined prey groups
+```{r}
+#dragon fly larvae - Odonata
+odonates <- filter(all.isotopes, Species %in% c("BRAGRA", "CELSPP", "CORING", 
+                                                "EPISTE", "ERYSIM", "LIBINC", "PACLON"),
+                   Slough == "SRS") %>% 
+  #group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Odonata")
+
+#Cyprinodontiformes - POELAT (sailfin molly) are omitted because their d13C value is quite different than the others 
+cyprinodont <- all.isotopes %>% 
+  filter(Species %in% c("JORFLO", "GAMHOL", "FUNCHR", "FUNCON", "LUCGOO"),
+         Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  mutate(Species = "Cyprinodont")
+
+#Centrarchids
+centrarchid <- all.isotopes %>% 
+  filter(Species %in% c("LEPGUL", "LEPMAC", "LEPMAR", "LEPMIC", "LEPPUN", "ENNGLO", "ELAEVE"),
+         Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Centrarchid")
+
+#Crayfish
+procambarus <-  all.isotopes %>% 
+  filter(Species %in% c("PROALL", "PROFAL", "PROSPP"),
+         Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Procambarus")
+
+#Apple Snails
+pomacea <- all.isotopes %>% 
+  filter(Species %in% c("POMBRI", "POMPAL"),
+         Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Pomacea")
+
+#Aquatic snails besides apple snails
+sm.snails <- all.isotopes %>% 
+  filter(Species %in% c("LITMON", "MELTUB", "PLASCA", "PSECOL"),
+         Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  mutate(Species = "Small Snails")
+
+#all snails
+all.snails <- all.isotopes %>% 
+  filter(Species %in% c("LITMON", "MELTUB", "PLASCA", "PSECOL", "POMBRI", "POMPAL"),
+         Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  mutate(Species = "Aquatic Snails")
+
+#tadpoles
+tadpoles <- all.isotopes %>% 
+  filter(Species %in% c("ACRIPT", "RANATP"),
+         Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  mutate(Species = "Anurans")
+
+#Green Algae - using values from Flood et al. 2023
+algae <- matrix(c(3.8954, -31.8618, 0.4225, 1.1178, "Green Algae"), nrow = 1, ncol = 5)
+colnames(algae) <- colnames(pomacea)
+names(algae) <- names(pomacea)
+algae <- algae %>% as.data.frame() %>%  mutate_at(vars(-c(Species)), as.numeric)
+
+#SPHAER have n = 1 from TSL
+#Making their own group so they get around SRS filters
+sphaer <- all.isotopes %>% filter(Species == "SPHAER") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Sphaeriidae") 
+
+#Coleopterans (COLEOA) only have one sample from SRS
+#Pulling in TSL data here to make a group with SD
+coleoa <- all.isotopes %>% filter(Species == "COLEOA") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Coleopterans") 
+
+vasc.plants <- all.isotopes %>% filter(Species %in% c("CLAJAM", "ELECEL", "PONCOR")) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Vasc. Plants") 
+
+utricularia <- all.isotopes %>% filter(grepl("UTR", Species), Slough == "SRS") %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd)) %>% 
+  mutate(Species = "Utricularia")
+```
+
+# Mixing models
+## Greater Siren
+Create consumer group
+```{r}
+sirlac <- all.isotopes %>% filter(Species == "SIRLAC") #wet and dry season 
+
+#extract model parameters
+sirlac.mix <- sirlac %>% distinct(ID, .keep_all = T) %>%  select(d13C, d15N) %>% as.matrix()
+```
+
+### Model 1
+```{r}
+sirlac1.prey <- all.isotopes %>% 
+  filter(Species %in% c( "MELTUB", "PLASCA", "PSECOL"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(sphaer, cyprinodont, procambarus, pomacea, odonates, algae)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac1.prey[4,4] <- mean(sirlac1.prey$d15N_sd, na.rm = T) 
+sirlac1.prey[4,5] <- mean(sirlac1.prey$d13C_sd, na.rm = T)
+
+sirlac1.source.names <- as.vector(sirlac1.prey$Species)
+sirlac1.source.means <- sirlac1.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac1.source.sd <- sirlac1.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac1.tef.means <- bind_cols(rep(0.3, nrow(sirlac1.prey)), rep(3.3, nrow(sirlac1.prey))) %>% 
+  as.matrix()
+colnames(sirlac1.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac1.tef.sd <- bind_cols(rep(0.14, nrow(sirlac1.prey)), rep(0.26, nrow(sirlac1.prey))) %>%
+  as.matrix()
+colnames(sirlac1.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac1.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac1.source.names,
+                               source_means = sirlac1.source.means,
+                               source_sds = sirlac1.source.sd,
+                               correction_means = sirlac1.tef.means,
+                               correction_sds = sirlac1.tef.sd)
+
+sirlac1.simmr.in
+
+#visualize - isospace plot
+plot(sirlac1.simmr.in)
+
+
+#run simmr model
+sirlac1.simmr.out <- simmr_mcmc(sirlac1.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac1.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac1.simmr.out$output$`1`
+
+summary(sirlac1.simmr.out, type = 'statistics')
+summary(sirlac1.simmr.out, type = 'correlations')
+summary(sirlac1.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac1_simm.csv")
+# Plot the output
+plot(sirlac1.simmr.out, type = 'histogram')
+plot(sirlac1.simmr.out, type = 'density')
+plot(sirlac1.simmr.out, type = 'matrix', size = 10)
+plot(sirlac1.simmr.out, type = 'boxplot')
+```
+
+### Model 2
+```{r}
+sirlac2.prey <- all.isotopes %>% 
+  filter(Species %in% c( "MELTUB", "PLASCA"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(sphaer, cyprinodont, procambarus, pomacea, odonates, algae)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac2.prey[3,4] <- mean(sirlac2.prey$d15N_sd, na.rm = T) 
+sirlac2.prey[3,5] <- mean(sirlac2.prey$d13C_sd, na.rm = T)
+
+sirlac2.source.names <- as.vector(sirlac2.prey$Species)
+sirlac2.source.means <- sirlac2.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac2.source.sd <- sirlac2.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac2.tef.means <- bind_cols(rep(0.3, nrow(sirlac2.prey)), rep(3.3, nrow(sirlac2.prey))) %>% 
+  as.matrix()
+colnames(sirlac2.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac2.tef.sd <- bind_cols(rep(0.14, nrow(sirlac2.prey)), rep(0.26, nrow(sirlac2.prey))) %>%
+  as.matrix()
+colnames(sirlac2.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac2.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac2.source.names,
+                               source_means = sirlac2.source.means,
+                               source_sds = sirlac2.source.sd,
+                               correction_means = sirlac2.tef.means,
+                               correction_sds = sirlac2.tef.sd)
+
+sirlac2.simmr.in
+
+#visualize - isospace plot
+plot(sirlac2.simmr.in)
+
+
+#run simmr model
+sirlac2.simmr.out <- simmr_mcmc(sirlac2.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac2.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac2.simmr.out$output$`1`
+
+summary(sirlac2.simmr.out, type = 'statistics')
+summary(sirlac2.simmr.out, type = 'correlations')
+summary(sirlac2.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac2_simm.csv")
+# Plot the output
+plot(sirlac2.simmr.out, type = 'histogram')
+plot(sirlac2.simmr.out, type = 'density')
+plot(sirlac2.simmr.out, type = 'matrix', size = 10)
+plot(sirlac2.simmr.out, type = 'boxplot')
+```
+
+### Model 3
+```{r}
+sirlac3.prey <- bind_rows(sphaer, cyprinodont, procambarus, pomacea, odonates, algae, sm.snails)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac3.prey[1,3] <- mean(sirlac3.prey$d15N_sd, na.rm = T) 
+sirlac3.prey[1,4] <- mean(sirlac3.prey$d13C_sd, na.rm = T)
+
+sirlac3.source.names <- as.vector(sirlac3.prey$Species)
+sirlac3.source.means <- sirlac3.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac3.source.sd <- sirlac3.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac3.tef.means <- bind_cols(rep(0.3, nrow(sirlac3.prey)), rep(3.3, nrow(sirlac3.prey))) %>% 
+  as.matrix()
+colnames(sirlac3.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac3.tef.sd <- bind_cols(rep(0.14, nrow(sirlac3.prey)), rep(0.26, nrow(sirlac3.prey))) %>%
+  as.matrix()
+colnames(sirlac3.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac3.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac3.source.names,
+                               source_means = sirlac3.source.means,
+                               source_sds = sirlac3.source.sd,
+                               correction_means = sirlac3.tef.means,
+                               correction_sds = sirlac3.tef.sd)
+
+sirlac3.simmr.in
+
+#visualize - isospace plot
+plot(sirlac3.simmr.in)
+
+
+#run simmr model
+sirlac3.simmr.out <- simmr_mcmc(sirlac3.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac3.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac3.simmr.out$output$`1`
+
+summary(sirlac3.simmr.out, type = 'statistics')
+summary(sirlac3.simmr.out, type = 'correlations')
+summary(sirlac3.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac3_simm.csv")
+# Plot the output
+plot(sirlac3.simmr.out, type = 'histogram')
+plot(sirlac3.simmr.out, type = 'density')
+plot(sirlac3.simmr.out, type = 'matrix', size = 10)
+plot(sirlac3.simmr.out, type = 'boxplot')
+```
+
+### Model 4
+```{r}
+sirlac4.prey <- bind_rows(sphaer, cyprinodont, procambarus, all.snails, odonates, algae)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac4.prey[1,3] <- mean(sirlac4.prey$d15N_sd, na.rm = T) 
+sirlac4.prey[1,4] <- mean(sirlac4.prey$d13C_sd, na.rm = T)
+
+sirlac4.source.names <- as.vector(sirlac4.prey$Species)
+sirlac4.source.means <- sirlac4.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac4.source.sd <- sirlac4.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac4.tef.means <- bind_cols(rep(0.3, nrow(sirlac4.prey)), rep(3.3, nrow(sirlac4.prey))) %>% 
+  as.matrix()
+colnames(sirlac4.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac4.tef.sd <- bind_cols(rep(0.14, nrow(sirlac4.prey)), rep(0.26, nrow(sirlac4.prey))) %>%
+  as.matrix()
+colnames(sirlac4.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac4.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac4.source.names,
+                               source_means = sirlac4.source.means,
+                               source_sds = sirlac4.source.sd,
+                               correction_means = sirlac4.tef.means,
+                               correction_sds = sirlac4.tef.sd)
+
+sirlac4.simmr.in
+
+#visualize - isospace plot
+plot(sirlac4.simmr.in)
+
+
+#run simmr model
+sirlac4.simmr.out <- simmr_mcmc(sirlac4.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac4.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac4.simmr.out$output$`1`
+
+summary(sirlac4.simmr.out, type = 'statistics')
+summary(sirlac4.simmr.out, type = 'correlations')
+summary(sirlac4.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac4_simm.csv")
+# Plot the output
+plot(sirlac4.simmr.out, type = 'histogram')
+plot(sirlac4.simmr.out, type = 'density')
+plot(sirlac4.simmr.out, type = 'matrix', size = 10)
+plot(sirlac4.simmr.out, type = 'boxplot')
+```
+
+
+### Model 5
+```{r}
+sirlac5.prey <- all.isotopes %>% 
+  filter(Species %in% c( "POELAT"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(sphaer, cyprinodont, procambarus, all.snails, odonates, algae)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac5.prey[2,4] <- mean(sirlac5.prey$d15N_sd, na.rm = T) 
+sirlac5.prey[2,5] <- mean(sirlac5.prey$d13C_sd, na.rm = T)
+
+sirlac5.source.names <- as.vector(sirlac5.prey$Species)
+sirlac5.source.means <- sirlac5.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac5.source.sd <- sirlac5.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac5.tef.means <- bind_cols(rep(0.3, nrow(sirlac5.prey)), rep(3.3, nrow(sirlac5.prey))) %>% 
+  as.matrix()
+colnames(sirlac5.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac5.tef.sd <- bind_cols(rep(0.14, nrow(sirlac5.prey)), rep(0.26, nrow(sirlac5.prey))) %>%
+  as.matrix()
+colnames(sirlac5.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac5.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac5.source.names,
+                               source_means = sirlac5.source.means,
+                               source_sds = sirlac5.source.sd,
+                               correction_means = sirlac5.tef.means,
+                               correction_sds = sirlac5.tef.sd)
+
+sirlac5.simmr.in
+
+#visualize - isospace plot
+plot(sirlac5.simmr.in)
+
+
+#run simmr model
+sirlac5.simmr.out <- simmr_mcmc(sirlac5.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac5.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac5.simmr.out$output$`1`
+
+summary(sirlac5.simmr.out, type = 'statistics')
+summary(sirlac5.simmr.out, type = 'correlations')
+summary(sirlac5.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac5_simm.csv")
+# Plot the output
+plot(sirlac5.simmr.out, type = 'histogram')
+plot(sirlac5.simmr.out, type = 'density')
+plot(sirlac5.simmr.out, type = 'matrix', size = 10)
+plot(sirlac5.simmr.out, type = 'boxplot')
+```
+
+### Model 6
+```{r}
+sirlac6.prey <- all.isotopes %>% 
+  filter(Species %in% c( "UTRPUR"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(sphaer, cyprinodont, procambarus, all.snails, odonates, algae)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac6.prey[2,4] <- mean(sirlac6.prey$d15N_sd, na.rm = T) 
+sirlac6.prey[2,5] <- mean(sirlac6.prey$d13C_sd, na.rm = T)
+
+sirlac6.source.names <- as.vector(sirlac6.prey$Species)
+sirlac6.source.means <- sirlac6.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac6.source.sd <- sirlac6.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac6.tef.means <- bind_cols(rep(0.3, nrow(sirlac6.prey)), rep(3.3, nrow(sirlac6.prey))) %>% 
+  as.matrix()
+colnames(sirlac6.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac6.tef.sd <- bind_cols(rep(0.14, nrow(sirlac6.prey)), rep(0.26, nrow(sirlac6.prey))) %>%
+  as.matrix()
+colnames(sirlac6.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac6.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac6.source.names,
+                               source_means = sirlac6.source.means,
+                               source_sds = sirlac6.source.sd,
+                               correction_means = sirlac6.tef.means,
+                               correction_sds = sirlac6.tef.sd)
+
+sirlac6.simmr.in
+
+#visualize - isospace plot
+plot(sirlac6.simmr.in)
+
+
+#run simmr model
+sirlac6.simmr.out <- simmr_mcmc(sirlac6.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac6.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac6.simmr.out$output$`1`
+
+summary(sirlac6.simmr.out, type = 'statistics')
+summary(sirlac6.simmr.out, type = 'correlations')
+summary(sirlac6.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac6_simm.csv")
+# Plot the output
+plot(sirlac6.simmr.out, type = 'histogram')
+plot(sirlac6.simmr.out, type = 'density')
+plot(sirlac6.simmr.out, type = 'matrix', size = 10)
+plot(sirlac6.simmr.out, type = 'boxplot')
+```
+
+### Model 7
+```{r}
+sirlac7.prey <- all.isotopes %>% 
+  filter(Species %in% c( "UTRPUR"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(sphaer, cyprinodont, procambarus, all.snails, odonates, algae, tadpoles)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac7.prey[2,4] <- mean(sirlac7.prey$d15N_sd, na.rm = T) 
+sirlac7.prey[2,5] <- mean(sirlac7.prey$d13C_sd, na.rm = T)
+
+sirlac7.source.names <- as.vector(sirlac7.prey$Species)
+sirlac7.source.means <- sirlac7.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac7.source.sd <- sirlac7.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac7.tef.means <- bind_cols(rep(0.3, nrow(sirlac7.prey)), rep(3.3, nrow(sirlac7.prey))) %>% 
+  as.matrix()
+colnames(sirlac7.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac7.tef.sd <- bind_cols(rep(0.14, nrow(sirlac7.prey)), rep(0.26, nrow(sirlac7.prey))) %>%
+  as.matrix()
+colnames(sirlac7.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac7.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac7.source.names,
+                               source_means = sirlac7.source.means,
+                               source_sds = sirlac7.source.sd,
+                               correction_means = sirlac7.tef.means,
+                               correction_sds = sirlac7.tef.sd)
+
+sirlac7.simmr.in
+
+#visualize - isospace plot
+plot(sirlac7.simmr.in)
+
+
+#run simmr model
+sirlac7.simmr.out <- simmr_mcmc(sirlac7.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac7.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac7.simmr.out$output$`1`
+
+summary(sirlac7.simmr.out, type = 'statistics')
+summary(sirlac7.simmr.out, type = 'correlations')
+summary(sirlac7.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac7_simm.csv")
+# Plot the output
+plot(sirlac7.simmr.out, type = 'histogram')
+plot(sirlac7.simmr.out, type = 'density')
+plot(sirlac7.simmr.out, type = 'matrix', size = 10)
+plot(sirlac7.simmr.out, type = 'boxplot')
+```
+
+### Model 8
+```{r}
+sirlac8.prey <- all.isotopes %>% 
+  filter(Species %in% c( "UTRPUR"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(sphaer, procambarus, all.snails, odonates, algae, tadpoles)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+sirlac8.prey[2,4] <- mean(sirlac8.prey$d15N_sd, na.rm = T) 
+sirlac8.prey[2,5] <- mean(sirlac8.prey$d13C_sd, na.rm = T)
+
+sirlac8.source.names <- as.vector(sirlac8.prey$Species)
+sirlac8.source.means <- sirlac8.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac8.source.sd <- sirlac8.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac8.tef.means <- bind_cols(rep(0.3, nrow(sirlac8.prey)), rep(3.3, nrow(sirlac8.prey))) %>% 
+  as.matrix()
+colnames(sirlac8.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac8.tef.sd <- bind_cols(rep(0.14, nrow(sirlac8.prey)), rep(0.26, nrow(sirlac8.prey))) %>%
+  as.matrix()
+colnames(sirlac8.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac8.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac8.source.names,
+                               source_means = sirlac8.source.means,
+                               source_sds = sirlac8.source.sd,
+                               correction_means = sirlac8.tef.means,
+                               correction_sds = sirlac8.tef.sd)
+
+sirlac8.simmr.in
+
+#visualize - isospace plot
+plot(sirlac8.simmr.in)
+
+
+#run simmr model
+sirlac8.simmr.out <- simmr_mcmc(sirlac8.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac8.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac8.simmr.out$output$`1`
+
+summary(sirlac8.simmr.out, type = 'statistics')
+summary(sirlac8.simmr.out, type = 'correlations')
+summary(sirlac8.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac8_simm.csv")
+# Plot the output
+plot(sirlac8.simmr.out, type = 'histogram')
+plot(sirlac8.simmr.out, type = 'density')
+plot(sirlac8.simmr.out, type = 'matrix', size = 10)
+plot(sirlac8.simmr.out, type = 'boxplot')
+```
+
+### Model 9
+```{r}
+sirlac9.prey <- all.isotopes %>% 
+  filter(Species %in% c( "UTRPUR"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(procambarus, all.snails, odonates, algae, tadpoles)
+
+sirlac9.source.names <- as.vector(sirlac9.prey$Species)
+sirlac9.source.means <- sirlac9.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+sirlac9.source.sd <- sirlac9.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+sirlac9.tef.means <- bind_cols(rep(0.3, nrow(sirlac9.prey)), rep(3.3, nrow(sirlac9.prey))) %>% 
+  as.matrix()
+colnames(sirlac9.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+sirlac9.tef.sd <- bind_cols(rep(0.14, nrow(sirlac9.prey)), rep(0.26, nrow(sirlac9.prey))) %>%
+  as.matrix()
+colnames(sirlac9.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+sirlac9.simmr.in <- simmr_load(mixtures = sirlac.mix,
+                               source_names = sirlac9.source.names,
+                               source_means = sirlac9.source.means,
+                               source_sds = sirlac9.source.sd,
+                               correction_means = sirlac9.tef.means,
+                               correction_sds = sirlac9.tef.sd)
+
+sirlac9.simmr.in
+
+#visualize - isospace plot
+plot(sirlac9.simmr.in)
+
+
+#run simmr model
+sirlac9.simmr.out <- simmr_mcmc(sirlac9.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(sirlac9.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+sirlac9.simmr.out$output$`1`
+
+summary(sirlac9.simmr.out, type = 'statistics')
+summary(sirlac9.simmr.out, type = 'correlations')
+summary(sirlac9.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/sirlac9_simm.csv")
+# Plot the output
+plot(sirlac9.simmr.out, type = 'histogram')
+plot(sirlac9.simmr.out, type = 'density')
+plot(sirlac9.simmr.out, type = 'matrix', size = 10)
+plot(sirlac9.simmr.out, type = 'boxplot')
+```
+
+## Two-Toed Amphiuma
+Create consumer group
+```{r}
+ampmea <- all.isotopes %>% filter(Species == "AMPMEA") #dry season only
+
+#extract model parameters
+ampmea.mix <- ampmea %>% distinct(ID, .keep_all = T) %>%  select(d13C, d15N) %>% as.matrix()
+```
+
+### Model 1
+```{r}
+ampmea.prey <- all.isotopes %>% 
+  filter(Species %in% c( "CYBSPP", "BELSPP", "PLASCA"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, sphaer, cyprinodont, procambarus, pomacea, odonates, 
+            algae, tadpoles)
+
+#SPHAER has n = 1, setting SD to the mean of the other sources for this model
+ampmea.prey[5,4] <- mean(ampmea.prey$d15N_sd, na.rm = T) 
+ampmea.prey[5,5] <- mean(ampmea.prey$d13C_sd, na.rm = T)
+
+ampmea1.source.names <- as.vector(ampmea.prey$Species)
+ampmea1.source.means <- ampmea.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+ampmea1.source.sd <- ampmea.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+ampmea1.tef.means <- bind_cols(rep(0.3, nrow(ampmea.prey)), rep(3.3, nrow(ampmea.prey))) %>% 
+  as.matrix()
+colnames(ampmea1.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+ampmea1.tef.sd <- bind_cols(rep(0.14, nrow(ampmea.prey)), rep(0.26, nrow(ampmea.prey))) %>%
+  as.matrix()
+colnames(ampmea1.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+ampmea1.simmr.in <- simmr_load(mixtures = ampmea.mix,
+                               source_names = ampmea1.source.names,
+                               source_means = ampmea1.source.means,
+                               source_sds = ampmea1.source.sd,
+                               correction_means = ampmea1.tef.means,
+                               correction_sds = ampmea1.tef.sd)
+
+ampmea1.simmr.in
+
+#visualize - isospace plot
+plot(ampmea1.simmr.in)
+
+
+#run simmr model
+ampmea1.simmr.out <- simmr_mcmc(ampmea1.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(ampmea1.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+ampmea1.simmr.out$output$`1`
+
+summary(ampmea1.simmr.out, type = 'statistics')
+summary(ampmea1.simmr.out, type = 'correlations')
+summary(ampmea1.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/ampmea1_simm.csv")
+# Plot the output
+plot(ampmea1.simmr.out, type = 'histogram')
+plot(ampmea1.simmr.out, type = 'density')
+plot(ampmea1.simmr.out, type = 'matrix', size = 10)
+plot(ampmea1.simmr.out, type = 'boxplot')
+```
+
+### Model 2
+```{r}
+ampmea2.prey <- all.isotopes %>% 
+  filter(Species %in% c( "CYBSPP", "BELSPP", "PLASCA"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, cyprinodont, procambarus, pomacea, odonates)
+
+ampmea2.source.names <- as.vector(ampmea2.prey$Species)
+ampmea2.source.means <- ampmea2.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+ampmea2.source.sd <- ampmea2.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+ampmea2.tef.means <- bind_cols(rep(0.3, nrow(ampmea2.prey)), rep(3.3, nrow(ampmea2.prey))) %>% 
+  as.matrix()
+colnames(ampmea2.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+ampmea2.tef.sd <- bind_cols(rep(0.14, nrow(ampmea2.prey)), rep(0.26, nrow(ampmea2.prey))) %>%
+  as.matrix()
+colnames(ampmea2.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+ampmea2.simmr.in <- simmr_load(mixtures = ampmea.mix,
+                               source_names = ampmea2.source.names,
+                               source_means = ampmea2.source.means,
+                               source_sds = ampmea2.source.sd,
+                               correction_means = ampmea2.tef.means,
+                               correction_sds = ampmea2.tef.sd)
+
+ampmea2.simmr.in
+
+#visualize - isospace plot
+plot(ampmea2.simmr.in)
+
+
+#run simmr model
+ampmea2.simmr.out <- simmr_mcmc(ampmea2.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(ampmea2.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+ampmea2.simmr.out$output$`1`
+
+summary(ampmea2.simmr.out, type = 'statistics')
+summary(ampmea2.simmr.out, type = 'correlations')
+summary(ampmea2.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/ampmea2_simm.csv")
+# Plot the output
+plot(ampmea2.simmr.out, type = 'histogram')
+plot(ampmea2.simmr.out, type = 'density')
+plot(ampmea2.simmr.out, type = 'matrix', size = 10)
+plot(ampmea2.simmr.out, type = 'boxplot')
+```
+
+### Model 3
+```{r}
+ampmea3.prey <- all.isotopes %>% 
+  filter(Species %in% c( "CYBSPP", "BELSPP", "PLASCA", "ALGBAL"), 
+         #Algae ball (Nostoc spp.) inclusiong helps with mixing polygon
+         #Howell dissertation does say "plant matter" in fecal samples
+         #Pers comms said this was likely algae/diatoms
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, cyprinodont, procambarus, pomacea, odonates)
+
+ampmea3.source.names <- as.vector(ampmea3.prey$Species)
+ampmea3.source.means <- ampmea3.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+ampmea3.source.sd <- ampmea3.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+ampmea3.tef.means <- bind_cols(rep(0.3, nrow(ampmea3.prey)), rep(3.3, nrow(ampmea3.prey))) %>% 
+  as.matrix()
+colnames(ampmea3.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+ampmea3.tef.sd <- bind_cols(rep(0.14, nrow(ampmea3.prey)), rep(0.26, nrow(ampmea3.prey))) %>%
+  as.matrix()
+colnames(ampmea3.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+ampmea3.simmr.in <- simmr_load(mixtures = ampmea.mix,
+                               source_names = ampmea3.source.names,
+                               source_means = ampmea3.source.means,
+                               source_sds = ampmea3.source.sd,
+                               correction_means = ampmea3.tef.means,
+                               correction_sds = ampmea3.tef.sd)
+
+ampmea3.simmr.in
+
+#visualize - isospace plot
+plot(ampmea3.simmr.in)
+
+
+#run simmr model
+ampmea3.simmr.out <- simmr_mcmc(ampmea3.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(ampmea3.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+ampmea3.simmr.out$output$`1`
+
+summary(ampmea3.simmr.out, type = 'statistics')
+summary(ampmea3.simmr.out, type = 'correlations')
+summary(ampmea3.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/ampmea3_simm.csv")
+# Plot the output
+plot(ampmea3.simmr.out, type = 'histogram')
+plot(ampmea3.simmr.out, type = 'density')
+plot(ampmea3.simmr.out, type = 'matrix', size = 10)
+plot(ampmea3.simmr.out, type = 'boxplot')
+```
+
+## Peninsula Newt
+Create consumer group
+```{r}
+notvir <- all.isotopes %>% filter(Species == "NOTVIR") #wet and dry season
+
+#extract model parameters
+notvir.mix <- notvir %>% distinct(ID, .keep_all = T) %>%  select(d13C, d15N) %>% as.matrix()
+```
+
+### Model 1
+```{r}
+notvir1.prey <- all.isotopes %>% 
+  filter(Species %in% c( "BELSPP", "PELFEM", "CORIXI", "FLATWORM", "GERRID", "PLASCA"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, pomacea, odonates)
+
+#Flatworm has n = 1, setting SD to the mean of the other sources for this model
+notvir1.prey[3,4] <- mean(notvir1.prey$d15N_sd, na.rm = T) 
+notvir1.prey[3,5] <- mean(notvir1.prey$d13C_sd, na.rm = T)
+
+notvir1.source.names <- as.vector(notvir1.prey$Species)
+notvir1.source.means <- notvir1.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+notvir1.source.sd <- notvir1.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+notvir1.tef.means <- bind_cols(rep(0.3, nrow(notvir1.prey)), rep(3.3, nrow(notvir1.prey))) %>% 
+  as.matrix()
+colnames(notvir1.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+notvir1.tef.sd <- bind_cols(rep(0.14, nrow(notvir1.prey)), rep(0.26, nrow(notvir1.prey))) %>%
+  as.matrix()
+colnames(notvir1.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+notvir1.simmr.in <- simmr_load(mixtures = notvir.mix,
+                               source_names = notvir1.source.names,
+                               source_means = notvir1.source.means,
+                               source_sds = notvir1.source.sd,
+                               correction_means = notvir1.tef.means,
+                               correction_sds = notvir1.tef.sd)
+
+notvir1.simmr.in
+
+#visualize - isospace plot
+plot(notvir1.simmr.in)
+
+
+#run simmr model
+notvir1.simmr.out <- simmr_mcmc(notvir1.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(notvir1.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+notvir1.simmr.out$output$`1`
+
+summary(notvir1.simmr.out, type = 'statistics')
+summary(notvir1.simmr.out, type = 'correlations')
+summary(notvir1.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/notvir1_simm.csv")
+# Plot the output
+plot(notvir1.simmr.out, type = 'histogram')
+plot(notvir1.simmr.out, type = 'density')
+plot(notvir1.simmr.out, type = 'matrix', size = 10)
+plot(notvir1.simmr.out, type = 'boxplot')
+```
+
+### Model 2
+```{r}
+notvir2.prey <- all.isotopes %>% 
+  filter(Species %in% c( "BELSPP", "PELFEM", "FLATWORM", "GERRID", "PLASCA"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, pomacea, odonates)
+
+#Flatworm has n = 1, setting SD to the mean of the other sources for this model
+notvir2.prey[2,4] <- mean(notvir2.prey$d15N_sd, na.rm = T) 
+notvir2.prey[2,5] <- mean(notvir2.prey$d13C_sd, na.rm = T)
+
+notvir2.source.names <- as.vector(notvir2.prey$Species)
+notvir2.source.means <- notvir2.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+notvir2.source.sd <- notvir2.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+notvir2.tef.means <- bind_cols(rep(0.3, nrow(notvir2.prey)), rep(3.3, nrow(notvir2.prey))) %>% 
+  as.matrix()
+colnames(notvir2.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+notvir2.tef.sd <- bind_cols(rep(0.14, nrow(notvir2.prey)), rep(0.26, nrow(notvir2.prey))) %>%
+  as.matrix()
+colnames(notvir2.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+notvir2.simmr.in <- simmr_load(mixtures = notvir.mix,
+                               source_names = notvir2.source.names,
+                               source_means = notvir2.source.means,
+                               source_sds = notvir2.source.sd,
+                               correction_means = notvir2.tef.means,
+                               correction_sds = notvir2.tef.sd)
+
+notvir2.simmr.in
+
+#visualize - isospace plot
+plot(notvir2.simmr.in)
+
+
+#run simmr model
+notvir2.simmr.out <- simmr_mcmc(notvir2.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(notvir2.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+notvir2.simmr.out$output$`1`
+
+summary(notvir2.simmr.out, type = 'statistics')
+summary(notvir2.simmr.out, type = 'correlations')
+summary(notvir2.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/notvir2_simm.csv")
+# Plot the output
+plot(notvir2.simmr.out, type = 'histogram')
+plot(notvir2.simmr.out, type = 'density')
+plot(notvir2.simmr.out, type = 'matrix', size = 10)
+plot(notvir2.simmr.out, type = 'boxplot')
+
+```
+
+### Model 3
+```{r}
+notvir3.prey <- all.isotopes %>% 
+  filter(Species %in% c( "BELSPP", "PELFEM", "FLATWORM", "GERRID", "PLASCA"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, pomacea, odonates, cyprinodont)
+
+#Flatworm has n = 1, setting SD to the mean of the other sources for this model
+notvir3.prey[2,4] <- mean(notvir3.prey$d15N_sd, na.rm = T) 
+notvir3.prey[2,5] <- mean(notvir3.prey$d13C_sd, na.rm = T)
+
+notvir3.source.names <- as.vector(notvir3.prey$Species)
+notvir3.source.means <- notvir3.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+notvir3.source.sd <- notvir3.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+notvir3.tef.means <- bind_cols(rep(0.3, nrow(notvir3.prey)), rep(3.3, nrow(notvir3.prey))) %>% 
+  as.matrix()
+colnames(notvir3.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+notvir3.tef.sd <- bind_cols(rep(0.14, nrow(notvir3.prey)), rep(0.26, nrow(notvir3.prey))) %>%
+  as.matrix()
+colnames(notvir3.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+notvir3.simmr.in <- simmr_load(mixtures = notvir.mix,
+                               source_names = notvir3.source.names,
+                               source_means = notvir3.source.means,
+                               source_sds = notvir3.source.sd,
+                               correction_means = notvir3.tef.means,
+                               correction_sds = notvir3.tef.sd)
+
+notvir3.simmr.in
+
+#visualize - isospace plot
+plot(notvir3.simmr.in)
+
+
+#run simmr model
+notvir3.simmr.out <- simmr_mcmc(notvir3.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(notvir3.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+notvir3.simmr.out$output$`1`
+
+summary(notvir3.simmr.out, type = 'statistics')
+summary(notvir3.simmr.out, type = 'correlations')
+summary(notvir3.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/notvir3_simm.csv")
+# Plot the output
+plot(notvir3.simmr.out, type = 'histogram')
+plot(notvir3.simmr.out, type = 'density')
+plot(notvir3.simmr.out, type = 'matrix', size = 10)
+plot(notvir3.simmr.out, type = 'boxplot')
+```
+
+### Model 4
+```{r}
+notvir4.prey <- all.isotopes %>% 
+  filter(Species %in% c( "BELSPP", "PELFEM", "FLATWORM", "GERRID", "PLASCA", "BLUE MITE"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, pomacea, odonates, cyprinodont)
+
+#Flatworm has n = 1, setting SD to the mean of the other sources for this model
+notvir4.prey[3,4] <- mean(notvir4.prey$d15N_sd, na.rm = T) 
+notvir4.prey[3,5] <- mean(notvir4.prey$d13C_sd, na.rm = T)
+
+notvir4.source.names <- as.vector(notvir4.prey$Species)
+notvir4.source.means <- notvir4.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+notvir4.source.sd <- notvir4.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+notvir4.tef.means <- bind_cols(rep(0.3, nrow(notvir4.prey)), rep(3.3, nrow(notvir4.prey))) %>% 
+  as.matrix()
+colnames(notvir4.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+notvir4.tef.sd <- bind_cols(rep(0.14, nrow(notvir4.prey)), rep(0.26, nrow(notvir4.prey))) %>%
+  as.matrix()
+colnames(notvir4.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+notvir4.simmr.in <- simmr_load(mixtures = notvir.mix,
+                               source_names = notvir4.source.names,
+                               source_means = notvir4.source.means,
+                               source_sds = notvir4.source.sd,
+                               correction_means = notvir4.tef.means,
+                               correction_sds = notvir4.tef.sd)
+
+notvir4.simmr.in
+
+#visualize - isospace plot
+plot(notvir4.simmr.in)
+
+
+#run simmr model
+notvir4.simmr.out <- simmr_mcmc(notvir4.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(notvir4.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+notvir4.simmr.out$output$`1`
+
+summary(notvir4.simmr.out, type = 'statistics')
+summary(notvir4.simmr.out, type = 'correlations')
+summary(notvir4.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/notvir4_simm.csv")
+# Plot the output
+plot(notvir4.simmr.out, type = 'histogram')
+plot(notvir4.simmr.out, type = 'density')
+plot(notvir4.simmr.out, type = 'matrix', size = 10)
+plot(notvir4.simmr.out, type = 'boxplot')
+```
+
+### Model 5
+```{r}
+notvir5.prey <- all.isotopes %>% 
+  filter(Species %in% c( "BELSPP", "PELFEM", "FLATWORM", "GERRID", "PLASCA", "BLUE MITE", "AMPHIPOD"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(coleoa, pomacea, odonates, cyprinodont)
+
+#Flatworm has n = 1, setting SD to the mean of the other sources for this model
+notvir5.prey[4,4] <- mean(notvir5.prey$d15N_sd, na.rm = T) 
+notvir5.prey[4,5] <- mean(notvir5.prey$d13C_sd, na.rm = T)
+
+notvir5.source.names <- as.vector(notvir5.prey$Species)
+notvir5.source.means <- notvir5.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+notvir5.source.sd <- notvir5.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+notvir5.tef.means <- bind_cols(rep(0.3, nrow(notvir5.prey)), rep(3.3, nrow(notvir5.prey))) %>% 
+  as.matrix()
+colnames(notvir5.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+notvir5.tef.sd <- bind_cols(rep(0.14, nrow(notvir5.prey)), rep(0.26, nrow(notvir5.prey))) %>%
+  as.matrix()
+colnames(notvir5.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+notvir5.simmr.in <- simmr_load(mixtures = notvir.mix,
+                               source_names = notvir5.source.names,
+                               source_means = notvir5.source.means,
+                               source_sds = notvir5.source.sd,
+                               correction_means = notvir5.tef.means,
+                               correction_sds = notvir5.tef.sd)
+
+notvir5.simmr.in
+
+#visualize - isospace plot
+plot(notvir5.simmr.in)
+
+
+#run simmr model
+notvir5.simmr.out <- simmr_mcmc(notvir5.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(notvir5.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+notvir5.simmr.out$output$`1`
+
+summary(notvir5.simmr.out, type = 'statistics')
+summary(notvir5.simmr.out, type = 'correlations')
+summary(notvir5.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/notvir5_simm.csv")
+# Plot the output
+plot(notvir5.simmr.out, type = 'histogram')
+plot(notvir5.simmr.out, type = 'density')
+plot(notvir5.simmr.out, type = 'matrix', size = 10)
+plot(notvir5.simmr.out, type = 'boxplot')
+```
+
+## Florida Green Watersnake
+Create consumer group
+```{r}
+nerflo <- all.isotopes %>% filter(Species == "NERFLO") #dry season only
+
+#extract model parameters
+nerflo.mix <- nerflo %>% distinct(ID, .keep_all = T) %>%  select(d13C, d15N) %>% as.matrix()
+```
+
+### Model 1
+```{r}
+nerflo1.prey <- all.isotopes %>% 
+  filter(Species %in% c( "TILMAR", "HEMLET", "CICURO", "POELAT", "RANGRY", "CYBSPP"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(cyprinodont, centrarchid, tadpoles, procambarus, odonates)
+
+nerflo1.source.names <- as.vector(nerflo1.prey$Species)
+nerflo1.source.means <- nerflo1.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+nerflo1.source.sd <- nerflo1.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+nerflo1.tef.means <- bind_cols(rep(0.3, nrow(nerflo1.prey)), rep(3.3, nrow(nerflo1.prey))) %>% 
+  as.matrix()
+colnames(nerflo1.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+nerflo1.tef.sd <- bind_cols(rep(0.14, nrow(nerflo1.prey)), rep(0.26, nrow(nerflo1.prey))) %>%
+  as.matrix()
+colnames(nerflo1.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+nerflo1.simmr.in <- simmr_load(mixtures = nerflo.mix,
+                               source_names = nerflo1.source.names,
+                               source_means = nerflo1.source.means,
+                               source_sds = nerflo1.source.sd,
+                               correction_means = nerflo1.tef.means,
+                               correction_sds = nerflo1.tef.sd)
+
+nerflo1.simmr.in
+
+#visualize - isospace plot
+plot(nerflo1.simmr.in)
+
+
+#run simmr model
+nerflo1.simmr.out <- simmr_mcmc(nerflo1.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(nerflo1.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+nerflo1.simmr.out$output$`1`
+
+summary(nerflo1.simmr.out, type = 'statistics')
+summary(nerflo1.simmr.out, type = 'correlations')
+summary(nerflo1.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/nerflo1_simm.csv")
+# Plot the output
+plot(nerflo1.simmr.out, type = 'histogram')
+plot(nerflo1.simmr.out, type = 'density')
+plot(nerflo1.simmr.out, type = 'matrix', size = 10)
+plot(nerflo1.simmr.out, type = 'boxplot')
+```
+
+### Model 2
+```{r}
+nerflo2.prey <- all.isotopes %>% 
+  filter(Species %in% c( "TILMAR", "POELAT", "RANGRY", "CYBSPP"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(cyprinodont, tadpoles, procambarus, odonates)
+
+nerflo2.source.names <- as.vector(nerflo2.prey$Species)
+nerflo2.source.means <- nerflo2.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+nerflo2.source.sd <- nerflo2.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+nerflo2.tef.means <- bind_cols(rep(0.3, nrow(nerflo2.prey)), rep(3.3, nrow(nerflo2.prey))) %>% 
+  as.matrix()
+colnames(nerflo2.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+nerflo2.tef.sd <- bind_cols(rep(0.14, nrow(nerflo2.prey)), rep(0.26, nrow(nerflo2.prey))) %>%
+  as.matrix()
+colnames(nerflo2.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+nerflo2.simmr.in <- simmr_load(mixtures = nerflo.mix,
+                               source_names = nerflo2.source.names,
+                               source_means = nerflo2.source.means,
+                               source_sds = nerflo2.source.sd,
+                               correction_means = nerflo2.tef.means,
+                               correction_sds = nerflo2.tef.sd)
+
+nerflo2.simmr.in
+
+#visualize - isospace plot
+plot(nerflo2.simmr.in)
+
+
+#run simmr model
+nerflo2.simmr.out <- simmr_mcmc(nerflo2.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(nerflo2.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+nerflo2.simmr.out$output$`1`
+
+summary(nerflo2.simmr.out, type = 'statistics')
+summary(nerflo2.simmr.out, type = 'correlations')
+summary(nerflo2.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/nerflo2_simm.csv")
+# Plot the output
+plot(nerflo2.simmr.out, type = 'histogram')
+plot(nerflo2.simmr.out, type = 'density')
+plot(nerflo2.simmr.out, type = 'matrix', size = 10)
+plot(nerflo2.simmr.out, type = 'boxplot')
+```
+
+### Model 3
+```{r}
+nerflo3.prey <- all.isotopes %>% 
+  filter(Species %in% c( "TILMAR", "RANGRY", "CYBSPP"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(cyprinodont, tadpoles, procambarus, odonates)
+
+nerflo3.source.names <- as.vector(nerflo3.prey$Species)
+nerflo3.source.means <- nerflo3.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+nerflo3.source.sd <- nerflo3.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+nerflo3.tef.means <- bind_cols(rep(0.3, nrow(nerflo3.prey)), rep(3.3, nrow(nerflo3.prey))) %>% 
+  as.matrix()
+colnames(nerflo3.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+nerflo3.tef.sd <- bind_cols(rep(0.14, nrow(nerflo3.prey)), rep(0.26, nrow(nerflo3.prey))) %>%
+  as.matrix()
+colnames(nerflo3.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+nerflo3.simmr.in <- simmr_load(mixtures = nerflo.mix,
+                               source_names = nerflo3.source.names,
+                               source_means = nerflo3.source.means,
+                               source_sds = nerflo3.source.sd,
+                               correction_means = nerflo3.tef.means,
+                               correction_sds = nerflo3.tef.sd)
+
+nerflo3.simmr.in
+
+#visualize - isospace plot
+plot(nerflo3.simmr.in)
+
+
+#run simmr model
+nerflo3.simmr.out <- simmr_mcmc(nerflo3.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(nerflo3.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+nerflo3.simmr.out$output$`1`
+
+summary(nerflo3.simmr.out, type = 'statistics')
+summary(nerflo3.simmr.out, type = 'correlations')
+summary(nerflo3.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/nerflo3_simm.csv")
+# Plot the output
+plot(nerflo3.simmr.out, type = 'histogram')
+plot(nerflo3.simmr.out, type = 'density')
+plot(nerflo3.simmr.out, type = 'matrix', size = 10)
+plot(nerflo3.simmr.out, type = 'boxplot')
+```
+
+### Model 4
+```{r}
+nerflo4.prey <- all.isotopes %>% 
+  filter(Species %in% c( "RANGRY", "CYBSPP"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(cyprinodont, tadpoles, procambarus, odonates)
+
+nerflo4.source.names <- as.vector(nerflo4.prey$Species)
+nerflo4.source.means <- nerflo4.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+nerflo4.source.sd <- nerflo4.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+nerflo4.tef.means <- bind_cols(rep(0.3, nrow(nerflo4.prey)), rep(3.3, nrow(nerflo4.prey))) %>% 
+  as.matrix()
+colnames(nerflo4.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+nerflo4.tef.sd <- bind_cols(rep(0.14, nrow(nerflo4.prey)), rep(0.26, nrow(nerflo4.prey))) %>%
+  as.matrix()
+colnames(nerflo4.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+nerflo4.simmr.in <- simmr_load(mixtures = nerflo.mix,
+                               source_names = nerflo4.source.names,
+                               source_means = nerflo4.source.means,
+                               source_sds = nerflo4.source.sd,
+                               correction_means = nerflo4.tef.means,
+                               correction_sds = nerflo4.tef.sd)
+
+nerflo4.simmr.in
+
+#visualize - isospace plot
+plot(nerflo4.simmr.in)
+
+
+#run simmr model
+nerflo4.simmr.out <- simmr_mcmc(nerflo4.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(nerflo4.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+nerflo4.simmr.out$output$`1`
+
+summary(nerflo4.simmr.out, type = 'statistics')
+summary(nerflo4.simmr.out, type = 'correlations')
+summary(nerflo4.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/nerflo4_simm.csv")
+# Plot the output
+plot(nerflo4.simmr.out, type = 'histogram')
+plot(nerflo4.simmr.out, type = 'density')
+plot(nerflo4.simmr.out, type = 'matrix', size = 10)
+plot(nerflo4.simmr.out, type = 'boxplot')
+```
+
+### Model 5
+```{r}
+nerflo5.prey <- all.isotopes %>% 
+  filter(Species %in% c( "RANGRY"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(cyprinodont, tadpoles, procambarus, odonates)
+
+nerflo5.source.names <- as.vector(nerflo5.prey$Species)
+nerflo5.source.means <- nerflo5.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+nerflo5.source.sd <- nerflo5.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+nerflo5.tef.means <- bind_cols(rep(0.3, nrow(nerflo5.prey)), rep(3.3, nrow(nerflo5.prey))) %>% 
+  as.matrix()
+colnames(nerflo5.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+nerflo5.tef.sd <- bind_cols(rep(0.14, nrow(nerflo5.prey)), rep(0.26, nrow(nerflo5.prey))) %>%
+  as.matrix()
+colnames(nerflo5.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+nerflo5.simmr.in <- simmr_load(mixtures = nerflo.mix,
+                               source_names = nerflo5.source.names,
+                               source_means = nerflo5.source.means,
+                               source_sds = nerflo5.source.sd,
+                               correction_means = nerflo5.tef.means,
+                               correction_sds = nerflo5.tef.sd)
+
+nerflo5.simmr.in
+
+#visualize - isospace plot
+plot(nerflo5.simmr.in)
+
+
+#run simmr model
+nerflo5.simmr.out <- simmr_mcmc(nerflo5.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(nerflo5.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+nerflo5.simmr.out$output$`1`
+
+summary(nerflo5.simmr.out, type = 'statistics')
+summary(nerflo5.simmr.out, type = 'correlations')
+summary(nerflo5.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/nerflo5_simm.csv")
+# Plot the output
+plot(nerflo5.simmr.out, type = 'histogram')
+plot(nerflo5.simmr.out, type = 'density')
+plot(nerflo5.simmr.out, type = 'matrix', size = 10)
+plot(nerflo5.simmr.out, type = 'boxplot')
+```
+
+### Model 6
+```{r}
+nerflo6.prey <- all.isotopes %>% 
+  filter(Species %in% c("RANGRY"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(tadpoles, procambarus, cyprinodont, centrarchid)
+
+nerflo6.source.names <- as.vector(nerflo6.prey$Species)
+nerflo6.source.means <- nerflo6.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+nerflo6.source.sd <- nerflo6.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+nerflo6.tef.means <- bind_cols(rep(0.3, nrow(nerflo6.prey)), rep(3.3, nrow(nerflo6.prey))) %>% 
+  as.matrix()
+colnames(nerflo6.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+nerflo6.tef.sd <- bind_cols(rep(0.14, nrow(nerflo6.prey)), rep(0.26, nrow(nerflo6.prey))) %>%
+  as.matrix()
+colnames(nerflo6.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+nerflo6.simmr.in <- simmr_load(mixtures = nerflo.mix,
+                               source_names = nerflo6.source.names,
+                               source_means = nerflo6.source.means,
+                               source_sds = nerflo6.source.sd,
+                               correction_means = nerflo6.tef.means,
+                               correction_sds = nerflo6.tef.sd)
+
+nerflo6.simmr.in
+
+#visualize - isospace plot
+plot(nerflo6.simmr.in)
+
+
+#run simmr model
+nerflo6.simmr.out <- simmr_mcmc(nerflo6.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(nerflo6.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+nerflo6.simmr.out$output$`1`
+
+summary(nerflo6.simmr.out, type = 'statistics')
+summary(nerflo6.simmr.out, type = 'correlations')
+summary(nerflo6.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/nerflo6_simm.csv")
+# Plot the output
+plot(nerflo6.simmr.out, type = 'histogram')
+plot(nerflo6.simmr.out, type = 'density')
+plot(nerflo6.simmr.out, type = 'matrix', size = 10)
+plot(nerflo6.simmr.out, type = 'boxplot')
+```
+
+### Model 7
+```{r}
+nerflo7.prey <- all.isotopes %>% 
+  filter(Species %in% c("RANGRY", "TILMAR"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(tadpoles, procambarus, cyprinodont, centrarchid)
+
+nerflo7.source.names <- as.vector(nerflo7.prey$Species)
+nerflo7.source.means <- nerflo7.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+nerflo7.source.sd <- nerflo7.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+nerflo7.tef.means <- bind_cols(rep(0.3, nrow(nerflo7.prey)), rep(3.3, nrow(nerflo7.prey))) %>% 
+  as.matrix()
+colnames(nerflo7.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+nerflo7.tef.sd <- bind_cols(rep(0.14, nrow(nerflo7.prey)), rep(0.26, nrow(nerflo7.prey))) %>%
+  as.matrix()
+colnames(nerflo7.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+nerflo7.simmr.in <- simmr_load(mixtures = nerflo.mix,
+                               source_names = nerflo7.source.names,
+                               source_means = nerflo7.source.means,
+                               source_sds = nerflo7.source.sd,
+                               correction_means = nerflo7.tef.means,
+                               correction_sds = nerflo7.tef.sd)
+
+nerflo7.simmr.in
+
+#visualize - isospace plot
+plot(nerflo7.simmr.in)
+
+
+#run simmr model
+nerflo7.simmr.out <- simmr_mcmc(nerflo7.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(nerflo7.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+nerflo7.simmr.out$output$`1`
+
+summary(nerflo7.simmr.out, type = 'statistics')
+summary(nerflo7.simmr.out, type = 'correlations')
+summary(nerflo7.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/nerflo7_simm.csv")
+# Plot the output
+plot(nerflo7.simmr.out, type = 'histogram')
+plot(nerflo7.simmr.out, type = 'density')
+plot(nerflo7.simmr.out, type = 'matrix', size = 10)
+plot(nerflo7.simmr.out, type = 'boxplot')
+```
+
+## Everglades Pygmy Siren
+Create consumer group
+```{r}
+pseaxa <- all.isotopes %>% filter(Species == "PSEAXA") #one of each
+
+#extract model parameters
+pseaxa.mix <- pseaxa %>% distinct(ID, .keep_all = T) %>%  select(d13C, d15N) %>% as.matrix()
+```
+
+### Model 1
+```{r}
+pseaxa1.prey <- all.isotopes %>% 
+  filter(Species %in% c("AMPHIPOD", "CHRION", "COPEPOD", "OSTRACOD", "PLASCA", "EPHEME"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(pomacea)
+
+pseaxa1.source.names <- as.vector(pseaxa1.prey$Species)
+pseaxa1.source.means <- pseaxa1.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+pseaxa1.source.sd <- pseaxa1.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+pseaxa1.tef.means <- bind_cols(rep(0.3, nrow(pseaxa1.prey)), rep(3.3, nrow(pseaxa1.prey))) %>% 
+  as.matrix()
+colnames(pseaxa1.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+pseaxa1.tef.sd <- bind_cols(rep(0.14, nrow(pseaxa1.prey)), rep(0.26, nrow(pseaxa1.prey))) %>%
+  as.matrix()
+colnames(pseaxa1.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+pseaxa1.simmr.in <- simmr_load(mixtures = pseaxa.mix,
+                               source_names = pseaxa1.source.names,
+                               source_means = pseaxa1.source.means,
+                               source_sds = pseaxa1.source.sd,
+                               correction_means = pseaxa1.tef.means,
+                               correction_sds = pseaxa1.tef.sd)
+
+pseaxa1.simmr.in
+
+#visualize - isospace plot
+plot(pseaxa1.simmr.in)
+
+
+#run simmr model
+pseaxa1.simmr.out <- simmr_mcmc(pseaxa1.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(pseaxa1.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+pseaxa1.simmr.out$output$`1`
+
+summary(pseaxa1.simmr.out, type = 'statistics')
+summary(pseaxa1.simmr.out, type = 'correlations')
+summary(pseaxa1.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/pseaxa1_simm.csv")
+# Plot the output
+plot(pseaxa1.simmr.out, type = 'histogram')
+plot(pseaxa1.simmr.out, type = 'density')
+plot(pseaxa1.simmr.out, type = 'matrix', size = 10)
+plot(pseaxa1.simmr.out, type = 'boxplot')
+```
+
+## Cricket Frog Tadpole
+Create consumer group
+```{r}
+acript <- all.isotopes %>% filter(Species == "ACRIPT") #2 dry, rest wet
+
+#extract model parameters
+acript.mix <- acript %>% distinct(ID, .keep_all = T) %>%  select(d13C, d15N) %>% as.matrix()
+```
+
+### Model 1
+```{r}
+acript1.prey <- all.isotopes %>% 
+  filter(Species %in% c("PERMAT"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(algae, vasc.plants, utricularia)
+
+acript1.source.names <- as.vector(acript1.prey$Species)
+acript1.source.means <- acript1.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+acript1.source.sd <- acript1.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+acript1.tef.means <- bind_cols(rep(0.3, nrow(acript1.prey)), rep(2.2, nrow(acript1.prey))) %>% 
+  as.matrix()
+colnames(acript1.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+acript1.tef.sd <- bind_cols(rep(0.14, nrow(acript1.prey)), rep(0.3, nrow(acript1.prey))) %>%
+  as.matrix()
+colnames(acript1.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+acript1.simmr.in <- simmr_load(mixtures = acript.mix,
+                               source_names = acript1.source.names,
+                               source_means = acript1.source.means,
+                               source_sds = acript1.source.sd,
+                               correction_means = acript1.tef.means,
+                               correction_sds = acript1.tef.sd)
+
+acript1.simmr.in
+
+#visualize - isospace plot
+plot(acript1.simmr.in)
+
+
+#run simmr model
+acript1.simmr.out <- simmr_mcmc(acript1.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(acript1.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+acript1.simmr.out$output$`1`
+
+summary(acript1.simmr.out, type = 'statistics')
+summary(acript1.simmr.out, type = 'correlations')
+summary(acript1.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/acript1_simm.csv")
+# Plot the output
+plot(acript1.simmr.out, type = 'histogram')
+plot(acript1.simmr.out, type = 'density')
+plot(acript1.simmr.out, type = 'matrix', size = 10)
+plot(acript1.simmr.out, type = 'boxplot')
+```
+
+### Model 2
+```{r}
+acript2.prey <-  bind_rows(algae, utricularia)
+
+acript2.source.names <- as.vector(acript2.prey$Species)
+acript2.source.means <- acript2.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+acript2.source.sd <- acript2.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+acript2.tef.means <- bind_cols(rep(0.3, nrow(acript2.prey)), rep(2.2, nrow(acript2.prey))) %>% 
+  as.matrix()
+colnames(acript2.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+acript2.tef.sd <- bind_cols(rep(0.14, nrow(acript2.prey)), rep(0.3, nrow(acript2.prey))) %>%
+  as.matrix()
+colnames(acript2.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+acript2.simmr.in <- simmr_load(mixtures = acript.mix,
+                               source_names = acript2.source.names,
+                               source_means = acript2.source.means,
+                               source_sds = acript2.source.sd,
+                               correction_means = acript2.tef.means,
+                               correction_sds = acript2.tef.sd)
+
+acript2.simmr.in
+
+#visualize - isospace plot
+plot(acript2.simmr.in)
+
+
+#run simmr model
+acript2.simmr.out <- simmr_mcmc(acript2.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(acript2.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+acript2.simmr.out$output$`1`
+
+summary(acript2.simmr.out, type = 'statistics')
+summary(acript2.simmr.out, type = 'correlations')
+summary(acript2.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/acript2_simm.csv")
+# Plot the output
+plot(acript2.simmr.out, type = 'histogram')
+plot(acript2.simmr.out, type = 'density')
+plot(acript2.simmr.out, type = 'matrix', size = 10)
+plot(acript2.simmr.out, type = 'boxplot')
+```
+
+## Pig Frog Tadpole
+Create consumer group
+```{r}
+ranatp <- all.isotopes %>% filter(Species == "RANATP")#2 dry, rest wet
+
+#extract model parameters
+ranatp.mix <- ranatp %>% distinct(ID, .keep_all = T) %>%  select(d13C, d15N) %>% as.matrix()
+```
+
+### Model 1
+```{r}
+ranatp1.prey <- all.isotopes %>% 
+  filter(Species %in% c("PERMAT"),
+         Slough == "SRS") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) %>% 
+  bind_rows(algae, vasc.plants, utricularia)
+
+ranatp1.source.names <- as.vector(ranatp1.prey$Species)
+ranatp1.source.means <- ranatp1.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+ranatp1.source.sd <- ranatp1.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+ranatp1.tef.means <- bind_cols(rep(0.3, nrow(ranatp1.prey)), rep(3.3, nrow(ranatp1.prey))) %>% 
+  as.matrix()
+colnames(ranatp1.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+ranatp1.tef.sd <- bind_cols(rep(0.14, nrow(ranatp1.prey)), rep(0.26, nrow(ranatp1.prey))) %>%
+  as.matrix()
+colnames(ranatp1.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+ranatp1.simmr.in <- simmr_load(mixtures = ranatp.mix,
+                               source_names = ranatp1.source.names,
+                               source_means = ranatp1.source.means,
+                               source_sds = ranatp1.source.sd,
+                               correction_means = ranatp1.tef.means,
+                               correction_sds = ranatp1.tef.sd)
+
+ranatp1.simmr.in
+
+#visualize - isospace plot
+plot(ranatp1.simmr.in)
+
+
+#run simmr model
+ranatp1.simmr.out <- simmr_mcmc(ranatp1.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(ranatp1.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+ranatp1.simmr.out$output$`1`
+
+summary(ranatp1.simmr.out, type = 'statistics')
+summary(ranatp1.simmr.out, type = 'correlations')
+summary(ranatp1.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/ranatp1_simm.csv")
+# Plot the output
+plot(ranatp1.simmr.out, type = 'histogram')
+plot(ranatp1.simmr.out, type = 'density')
+plot(ranatp1.simmr.out, type = 'matrix', size = 10)
+plot(ranatp1.simmr.out, type = 'boxplot')
+```
+
+### Model 2
+```{r}
+ranatp2.prey <- bind_rows(algae, utricularia)
+
+ranatp2.source.names <- as.vector(ranatp2.prey$Species)
+ranatp2.source.means <- ranatp2.prey %>% select(d13C_mean, d15N_mean) %>% as.matrix()
+ranatp2.source.sd <- ranatp2.prey %>% select(d13C_sd, d15N_sd) %>% as.matrix()
+
+#set up TEFs based on McCutchan et al 2003
+#mean
+ranatp2.tef.means <- bind_cols(rep(0.3, nrow(ranatp2.prey)), rep(3.3, nrow(ranatp2.prey))) %>% 
+  as.matrix()
+colnames(ranatp2.tef.means) <- c("Meand13C", "Meand15N")
+#sd
+ranatp2.tef.sd <- bind_cols(rep(0.14, nrow(ranatp2.prey)), rep(0.26, nrow(ranatp2.prey))) %>%
+  as.matrix()
+colnames(ranatp2.tef.sd) <- c("SDd13C", "SDd15N")
+
+#load in simmr format
+ranatp2.simmr.in <- simmr_load(mixtures = ranatp.mix,
+                               source_names = ranatp2.source.names,
+                               source_means = ranatp2.source.means,
+                               source_sds = ranatp2.source.sd,
+                               correction_means = ranatp2.tef.means,
+                               correction_sds = ranatp2.tef.sd)
+
+ranatp2.simmr.in
+
+#visualize - isospace plot
+plot(ranatp2.simmr.in)
+
+
+#run simmr model
+ranatp2.simmr.out <- simmr_mcmc(ranatp2.simmr.in,
+                                mcmc_control = list(iter = 50000, burn = 5000, thin = 100, n.chain = 2))
+
+#look through output
+#check convergence
+summary(ranatp2.simmr.out, type = "diagnostics")
+# If these are close to 1 (e.g. less than 1.1) you can continue
+
+# Now you can explore ...
+ranatp2.simmr.out$output$`1`
+
+summary(ranatp2.simmr.out, type = 'statistics')
+summary(ranatp2.simmr.out, type = 'correlations')
+summary(ranatp2.simmr.out, type = 'quantiles') %>% write.csv(file = "Outputs/Stable Isotopes/Diet/ranatp2_simm.csv")
+# Plot the output
+plot(ranatp2.simmr.out, type = 'histogram')
+plot(ranatp2.simmr.out, type = 'density')
+plot(ranatp2.simmr.out, type = 'matrix', size = 10)
+plot(ranatp2.simmr.out, type = 'boxplot')
+```
+
+# Isotope biplot
+Format data for plotting
+```{r}
+floc <- all.isotopes %>% 
+  filter(Slough =="SRS",
+         Species == "FLOC") %>% 
+  group_by(Species) %>% 
+  mutate_at(vars(c(d15N, d13C)), list(as.numeric)) %>% 
+  summarise_at(vars(d15N, d13C), list(mean = mean, sd = sd), na.rm = T) 
+
+
+all.plot.data <- bind_rows(
+  srs.isotope.spp.mean %>% filter(Species != "COLEOA"),
+  algae, floc, all.snails, centrarchid, 
+  coleoa %>% 
+    mutate(Species = gsub("Coleopterans", "COLEOA", Species)), 
+  cyprinodont,
+  odonates, sphaer, utricularia, vasc.plants
+) %>% 
+  filter(!Species %in% c("BLUE MITE")) %>% 
+  mutate(`Trophic Guild` = case_when(
+    Species %in% c("Vasc. Plants", "Green Algae", "PERMAT", "FLOC", "UTRFOL", "Utricularia", "UTRPUR") ~ "Basal Resources",
+    Species == "Detritus" ~ "Detritus",
+    Species %in% c("Collembola", "EPHEME", "Aquatic Snails", "MELTUB", "PACLON", "PLASCA",
+                   "PSECOL", "Sphaeriidae") ~ "Herb. Inverts",
+    Species %in% c("AMPHIPOD", "CHIRON", "COLEOA", "COPEPOD", "OSTRACOD", "CORIXI") ~ "Omni. Inverts",
+    Species %in% c("BRAGRA", "BELSPP", "CELSPP", "CORING", "CYBSPP", "EPISTE", "ERYSIM",
+                  "FLATWORM",  "HYDRAC", "LIBINC", "Odonata", "PELFEM") ~ "Carn. Inverts",
+    Species %in% c("Palaemonetes", "PROALL", "PROFAL", "PROSPP") ~ "Decapods",
+    Species %in% c("ACRIPT", "AMPMEA", "NERFLO", "NOTVIR", "PSEAXA", "RANATP", "RANGRY", "SIRLAC") ~ "Herpetofauna",
+    Species %in% c("Cyprinodont", "ELAEVE", "ENNGLO", "FUNCHR", "FUNCON", "GAMHOL",
+                   "JORFLO", "LUCGOO", "POELAT") ~ "Small Fishes",
+    Species %in% c("Centrarchid", "CICURO", "HEMLET", "LEPGUL", "LEPMAC", "LEPMAR",
+                   "LEPMIC", "LEPPUN", "TILMAR") ~ "Large Fishes"
+  ),
+  Order = case_when(
+    `Trophic Guild` == "Basal Resources" ~ 1,
+    `Trophic Guild` == "Herb. Inverts" ~ 2,
+    `Trophic Guild` == "Omni. Inverts" ~ 3,
+    `Trophic Guild` == "Carn. Inverts" ~ 4,
+    `Trophic Guild` == "Decapods" ~ 5,
+    `Trophic Guild` == "Small Fishes" ~ 6,
+    `Trophic Guild` == "Large Fishes" ~ 7,
+    `Trophic Guild` == "Herpetofauna" ~ 8,
+  ),
+  `Trophic Guild` = fct_reorder(`Trophic Guild`, Order),
+  Species = case_when(
+    Species == "ACRIPT" ~ "ACRITP",
+    Species == "PERMAT" ~ "Periphyton",
+    T ~ Species
+  ),
+  `Common Name` = case_when(
+    Species == "ACRITP" ~ "Cricket Frog Tadpoles",
+    Species == "AMPHIPOD" ~ "Scuds",
+    Species == "AMPMEA" ~ "Two-Toed Amphiuma",
+    Species == "BELSPP" ~ "Giant Water Bug",
+    Species == "BRAGRA" ~ "Four-Spotted Pennant",
+    Species == "CELSPP" ~ "Pennants",
+    Species == "CHIRON" ~ "Midge Larvae",
+    Species == "CICURO" ~ "Mayan Cichlid",
+    Species == "COPEPOD" ~ "Copepods",
+    Species == "CORING" ~ "Regal Darner",
+    Species == "CORIXI" ~ "Water Boatmen",
+    Species == "CYBSPP" ~ "Giant Diving Beetle",
+    Species == "ELAEVE" ~ "Everglades Pygmy Sunfish",
+    Species == "ENNGLO" ~ "Bluespotted Sunfish",
+    Species == "EPHEME" ~ "Mayfly Larvae",
+    Species == "EPISTE" ~ "Florida Baskettail",
+    Species == "ERYSIM" ~ "Eastern Pondhawk",
+    Species == "FLATWORM" ~ "Flatworms",
+    Species == "FUNCHR" ~ "Golden Topminnow",
+    Species == "FUNCON" ~ "Marsh Killifish",
+    Species == "GAMHOL" ~ "Eastern Mosquitofish",
+    Species == "HEMLET" ~ "African Jewelfish",
+    Species == "JORFLO" ~ "Flagfish",
+    Species == "LEPGUL" ~ "Warmouth",
+    Species == "LEPMAC" ~ "Bluegill",
+    Species == "LEPMAR" ~ "Dollar Sunfish",
+    Species == "LEPMIC" ~ "Redear Sunfish",
+    Species == "LEPPUN" ~ "Spotted Sunfish",
+    Species == "LIBINC" ~ "Slaty Skimmer",
+    Species == "LUCGOO" ~ "Bluefin Killifish",
+    Species == "MELTUB" ~ "Red-Rimmed Melania",
+    Species == "NERFLO" ~ "Florida Green Watersnake",
+    Species == "NOTVIR" ~ "Peninsula Newt",
+    Species == "OSTRACOD" ~ "Ostracods",
+    Species == "PACLON" ~ "Blue Dasher",
+    Species == "PELFEM" ~ "Creeping Water Bug",
+    Species == "Periphyton" ~ "Periphyton",
+    Species == "PLASCA" ~ "Ram's Horn Snails",
+    Species == "POELAT" ~ "Sailfin Mollies",
+    Species == "PROALL" ~ "Everglades Crayfish",
+    Species == "PROFAL" ~ "Slough Crayfish",
+    Species == "PROSPP" ~ "Juvenile Crayfish",
+    Species == "PSEAXA" ~ "Everglades Pygmy Siren",
+    Species == "PSECOL" ~ "American Ribbed Fluke Snail",
+    Species == "RANATP" ~ "Pig Frog Tadpoles",
+    Species == "RANGRY" ~ "Pig Frog",
+    Species == "SIRLAC" ~ "Greater Siren",
+    Species == "TILMAR" ~ "Spotted Tilapia",
+    Species == "UTRFOL" ~ "Leafy Bladderwort",
+    Species == "UTRPUR" ~ "Eastern Purple Bladderwort",
+    Species == "Green Algae" ~ "Green Algae",
+    Species == "FLOC" ~ "Benthic Flocculent Matter",
+    Species == "Aquatic Snails" ~ "Aquatic Snails",
+    Species == "Centrarchid" ~ "Centrarchids",
+    Species == "COLEOA" ~ "Aquatic Beetles",
+    Species == "Cyprinodont" ~ "Cyprinodontiforms",
+    Species == "Odonata" ~ "Odonate Larvae",
+    Species == "Sphaeriidae" ~ "Fingernail Clams",
+    Species == "Utricularia" ~ "Bladderworts",
+    Species == "Vasc. Plants" ~ "Vascular Plants"
+  )
+  )
+```
+
+## Plot
+```{r}
+(isotope.biplot.prey.groups <- ggplot(data = all.plot.data, 
+                                      aes(x = d13C_mean, y = d15N_mean, color = `Trophic Guild`))+
+    geom_text_repel(aes(label = `Common Name`), size = 3, max.overlaps = 20)+
+    scale_color_viridis_d(end = 0.8)+
+    xlab(expression(paste(delta^{13}, "C (\u2030)")))+
+    ylab(expression(paste(delta^{15}, "N (\u2030)")))+
+    theme_bw()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+  )
+
+ggsave("Figures/Stable Isotopes/herp.iso.biplot.tiff",
+       isotope.biplot.prey.groups,
+       dpi = 600, width = 200, height = 150, units = "mm"
+       )
+```

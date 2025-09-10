@@ -1,0 +1,117 @@
+---
+title: "03_trophic_position_from_stomach_contents"
+author: "Peter Flood"
+date: "2025-09-08"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install libraries 
+```{r}
+if (!require("openxlsx")) install.packages("openxlsx")
+if (!require("RVAideMemoire")) install.packages("RVAideMemoire")
+if (!require("lmPerm")) install.packages("lmPerm")
+if (!require("rcompanion")) install.packages("rcompanion")
+if (!require("tidyverse")) install.packages("tidyverse")
+```
+
+# Load libraries
+```{r}
+library(openxlsx) #readaing and exporting Excel files
+library(RVAideMemoire) #pairwise PERMANOVA
+library(lmPerm) #bold values in cells
+library(rcompanion) #arrange multiple plots and 95% confidence ellipses
+library(tidyverse) #data manipulation
+```
+
+# Read in data
+```{r}
+#Using merged stomach counts 
+#which is output from previous scripts
+stomach.counts <- read.csv("Outputs/Stomach Contents/stomachs_count_merge.csv")
+
+herp.stomachs <- stomach.counts %>% 
+  filter(Species %in% c(
+    "ACRIPT", #Southern Cricket Frog tadpole
+    "NERFLO", #Florida Green Watersnake
+    "NOTVIR", #Peninsula Newt
+    "PSEAXA", #Everglades Dwarf Siren
+    "RANATP", #Pig Frog tadpole
+    "RANGRY", #Pig Frog adult
+    "SIRLAC" #Greater Siren
+  ))
+```
+
+# Calculate trophic positions
+```{r}
+#Remove covariates aside from size class, habitat, season, and slough and remove empty stomachs
+no.empty.stomachs <- herp.stomachs %>% 
+  filter(Empty == 0) %>% 
+  select(-c(X, Species, Year, Site, Length, Wet_Weight, Sex, Empty))
+
+#create vector of diet item trophic positions in the same order as the columns in no.empty.stomachs
+diet.item.trophp <- c(1.5, 2, 2, 2, 2.5, 1.5, 1.5, 1.5, 1, 1.5, 2.37, 0.2, 1.5, 
+                      1, 0, 2, 2, 1.5, 1.5, 2.5, 1.5, 1, 2, 1.5, 1.5, 2, 0, 2, 1.5, 0)
+
+names(diet.item.trophp) <- colnames(no.empty.stomachs)[6:35]
+#calculate trophic positions with equation from Adams et al 1983 like in Flood et al 2022
+#TrophP = 1 + sum(trophp[prey]*proportion of diet of prey item)
+
+#remove covariates
+all.com <- no.empty.stomachs %>% select(-c(ID, size_class, Season, Slough, Habitat))
+
+#create prey proportion matrix
+#first, calculate row sum
+prey.sums <- apply(all.com, 1, sum)
+
+#create matrix to write over
+prey.pro<-all.com
+
+#Write loop to calculate prey proportions and write over the matrix we just made
+for(i in 1:nrow(all.com)){
+  for(j in 1:ncol(all.com)){
+    prey.pro[i,j]<-all.com[i,j]/prey.sums[i]
+  }
+}
+
+prey.pro[is.na(prey.pro)]<-0
+
+#check rows sum to one to be sure the loop worked correctly
+all.com.check<-apply(prey.pro, 1, sum)
+sort(all.com.check, decreasing = F)
+
+all.com.check[is.na(all.com.check)]
+
+sum(all.com.check)==nrow(all.com)
+
+#Make sure that diet item trophic position vector is in the same order as prey columns
+names(diet.item.trophp) == colnames(prey.pro)
+
+#prey proportion * prey trophic position
+prey.pro.troph<-sweep(prey.pro, MARGIN = 2, diet.item.trophp, `*`)
+
+#take the sum, add 1
+all.com.trophp<-apply(prey.pro.troph, 1, sum)+1 %>% round(3)
+all.com.trophp.na<-all.com.trophp[is.na(all.com.trophp)]
+
+#isolate covariates
+covariates <- herp.stomachs %>% 
+  select(ID, size_class, Season, Slough, Habitat)
+
+#re-attach covariates
+all.trophp <- bind_cols(covariates, all.com.trophp)
+
+colnames(all.trophp) <- c(colnames(covariates), "Trophic_Position")
+
+#sample size per level
+all.trophp.n<-all.trophp %>% group_by(size_class, Season, Slough, Habitat) %>% tally()
+```

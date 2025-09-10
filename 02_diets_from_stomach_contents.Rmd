@@ -1,0 +1,191 @@
+---
+title: "02_diets_from_stomach_contents"
+author: "Peter Flood"
+date: "2025-09-05"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Install libraries as needed
+```{r}
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("openxlsx")) install.packages("openxlsx")
+if (!require("ggrepel")) install.packages("ggrepel")
+if (!require("RVAideMemoire")) install.packages("RVAideMemoire")
+if (!require("pander")) install.packages("pander")
+if (!require("ggpubr")) install.packages("ggpubr")
+if (!require("ggbreak")) install.packages("ggbreak")
+if (!require("vegan")) install.packages("vegan")
+```
+
+# Load libraries
+```{r}
+library(openxlsx) #readaing and exporting Excel files
+library(ggrepel) #prevent text from overlapping in ggplot
+library(RVAideMemoire) #pairwise PERMANOVA
+library(pander) #bold values in cells
+library(ggpubr) #arrange multiple plots and 95% confidence ellipses
+library(ggbreak) #create breaks in axes while plotting
+library(vegan) #multivariate analyses
+library(tidyverse) #data manipulation
+```
+
+# Read in data
+```{r}
+#Using merged stomach counts 
+#which is output from previous scripts
+stomach.counts <- read.csv("Outputs/Stomach Contents/stomachs_count_merge.csv")
+```
+
+Filter down to herps only
+```{r}
+herp.stomachs <- stomach.counts %>% 
+  filter(Species %in% c(
+    "ACRIPT", #Southern Cricket Frog tadpole
+    "NERFLO", #Florida Green Watersnake
+    "NOTVIR", #Peninsula Newt
+    "PSEAXA", #Everglades Dwarf Siren
+    "RANATP", #Pig Frog tadpole
+    "RANGRY", #Pig Frog adult
+    "SIRLAC" #Greater Siren
+  ))
+```
+
+Sample size table
+```{r}
+sample.sizes <- herp.stomachs %>% 
+  group_by(size_class, Habitat, Season) %>% 
+  tally() 
+
+write.csv(sample.sizes, "Outputs/Stomach Contents/stomach_content_sample_sizes.csv")
+```
+
+# Multivariate Analyses
+## Format Data
+```{r}
+# 1. Filter out empty stomachs and select relevant covariates
+#Using the full stomach content matrix for the NMDS to provide additional context to herps
+no.empty.stomachs <- stomach.counts %>%
+  filter(Empty == 0) %>%
+  select(-c(Species, Year, Site, Length, Wet_Weight, Sex, Empty)) %>%
+  remove_rownames() %>%
+  column_to_rownames(var = "ID")
+
+# 2. Isolate prey columns
+prey.com <- no.empty.stomachs %>%
+  select(Amphipoda:Vasc.Plant)
+
+# 3. Assess rare prey groups (for your inspection)
+sort(apply(prey.com, 2, sum), decreasing = F)
+
+# 4. Remove rare prey groups
+prey.no.rare <- prey.com %>%
+  select(-c(Argulus, Centrarchid, Vasc.Plant, Oligochaeta)) #removing those with < 10
+
+# 5. Drop zero rows created by removing rare prey items (keep only rows where rowSums > 0)
+prey.no.rare.no.zero <- prey.no.rare %>%
+  filter(rowSums(.) > 0)
+
+# 6. Get covariate data for kept samples
+post.covariates.no.zero <- no.empty.stomachs %>%
+  rownames_to_column(var = "ID") %>%
+  select(ID:Habitat) %>%
+  filter(ID %in% rownames(prey.no.rare.no.zero))
+```
+
+## NMDS
+```{r}
+set.seed(999) #NMDS uses a randomization process, this allows for reproducibility
+post.nmds <- metaMDS(prey.no.rare.no.zero, k=2, distance = "horn", 
+                     noshare = 0.1, autotransform = F, plot = T)
+post.nmds
+
+#quick visulization
+ordiplot(post.nmds, type = "text", main = sprintf("k = 2; stress = %.3f", post.nmds$stress))
+
+#calculate stress values by hand
+#reconstruct community distance as in the nmds, accounting for zeros
+comm.dist <- metaMDSredist(post.nmds, distance = "horn")
+#calculate ordination distance
+ord.dist <- vegdist(post.nmds$points[,1:2], method = "euclidean")
+#extract residuals from a monotonic regression
+dhat <- isoreg(comm.dist, ord.dist)
+#plot monotonic regression
+plot(dhat)
+#calculate stress w/ residuals of this regression and ordination distances
+reg.stress <- sqrt(residuals(dhat)^2/sum(ord.dist^2))
+stress.label <- sprintf("Stress = %.2f", reg.stress*100)
+stressplot(post.nmds)
+text(1.5, 0.5, stress.label)
+```
+
+### NMDS Plot
+```{r}
+post.nmds.consumers <- as.data.frame(post.nmds$points) %>% 
+  rownames_to_column(var = "ID") %>% 
+  merge(., post.covariates.no.zero, by = "ID")
+#write this out to Excel for future use in SIBER
+write.csv(post.nmds.consumers, 
+          "Outputs/Stomach Contents/Diet/post_nmds_consumers.csv",
+          row.names = F)
+
+#centroids per size class
+post.nmds.spp.centroid <- post.nmds.consumers %>% group_by(size_class) %>% 
+  #filter for only herps 
+  filter(size_class %in% c(
+    "N.flo1", 
+    "N.vir1",
+    "P.axa1",
+    "R.gry1",
+    "R.gry2",
+    "S.lac1"
+  )) %>% 
+  summarise(MDS1 = mean(MDS1), MDS2 = mean(MDS2))
+
+post.nmds.prey <- as.data.frame(post.nmds$species) %>% rownames_to_column(var = "Prey Group")
+
+(
+  post.nmds.plot <- ggplot() +
+    #stat_ellipse(data = post.nmds.consumers, aes(x= MDS1, y = MDS2, color = Slough))+
+    geom_text_repel(
+      data = post.nmds.spp.centroid,
+      aes(x = MDS1, y = MDS2, label = size_class),
+      max.overlaps = 19,
+      size = 3
+    ) +
+    geom_text_repel(
+      data = post.nmds.prey,
+      aes(
+        x = MDS1,
+        y = MDS2,
+        label = `Prey Group`,
+        color = "red"
+      ),
+      size = 3
+    ) +
+    coord_fixed() +
+    theme_bw() +
+    theme(
+      panel.border = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.line = element_line(color = 'black'),
+      axis.title = element_text(size = 10),
+      axis.text = element_text(size = 8),
+      #legend.title = element_text(size = 20), legend.text = element_text(size = 20),
+      legend.position = "none"
+    )
+)
+
+ ggsave(filename = "Figures/Stomach Contents/Diet/nmds_herp_consumers.tiff", 
+        plot = post.nmds.plot, dpi = 600, width = 140, height = 140, units = "mm")
+```
