@@ -2107,7 +2107,7 @@ all.plot.data <- bind_rows(
     Species == "PROALL" ~ "Everglades Crayfish",
     Species == "PROFAL" ~ "Slough Crayfish",
     Species == "PROSPP" ~ "Juvenile Crayfish",
-    Species == "PSEAXA" ~ "Everglades Pygmy Siren",
+    Species == "PSEAXA" ~ "Everglades Dwarf Siren",
     Species == "PSECOL" ~ "American Ribbed Fluke Snail",
     Species == "RANATP" ~ "Pig Frog Tadpoles",
     Species == "RANGRY" ~ "Pig Frog",
